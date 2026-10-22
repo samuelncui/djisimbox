@@ -1,13 +1,9 @@
 {
   "version": 1,
-  "runtime_dir": "/run/djisimbox",
-  "secrets_file": "/etc/djisimbox/secrets.json",
-  "max_pending": 10000,
-  "max_bytes": 16777216,
   "routes": [
     {
       "iccid": "89000000000000000001",
-      "name": "Replace with your SIM name",
+      "name": "示例卡",
       "recipients": [
         {"bot": "default", "chat_id": "123456789"}
       ]

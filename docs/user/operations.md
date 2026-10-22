@@ -1,74 +1,87 @@
-# 日常运维
+# 日常使用
 
-## 查看运行状态
+## 修改收件人或增加 SIM
+
+编辑 `/etc/djisimbox/config.json`。每张 SIM 在 `routes` 中占一项；每位收件人在该项的 `recipients` 中占一项。下面示例把第一张卡发给两人，第二张卡发给另一人，所有编号都需替换：
+
+```json
+{
+  "version": 1,
+  "routes": [
+    {
+      "iccid": "89000000000000000001",
+      "name": "工作卡",
+      "recipients": [
+        {"bot": "default", "chat_id": "123456789"},
+        {"bot": "default", "chat_id": "234567890"}
+      ]
+    },
+    {
+      "iccid": "89000000000000000002",
+      "name": "备用卡",
+      "recipients": [
+        {"bot": "default", "chat_id": "345678901"}
+      ]
+    }
+  ]
+}
+```
+
+新收件人需先给 bot 发 `/start`，再按[安装步骤](install.md#3-取得-sim-编号和-telegram-收件人)取得聊天编号。群组中先加入 bot 并发 `/start@你的Bot用户名`；频道中将 bot 设为有发消息权限的管理员，再发布测试消息。频道编号取 `channel_post.chat.id`；群组和频道编号的负号要保留。
+
+需要不同 bot 时，在 `/etc/djisimbox/secrets.json` 的 `bots` 中增加一项，例如 `"family": "另一个 bot 的完整 token"`，并把相应收件人的 `bot` 改为 `family`。
+
+保存并检查，成功后重启生效：
 
 ```sh
-/usr/local/bin/djisimbox version
-sudo systemctl status djisimbox --no-pager
+sudoedit /etc/djisimbox/config.json /etc/djisimbox/secrets.json
 sudo -u djisimbox /usr/local/bin/djisimbox check
+sudo systemctl restart djisimbox
+```
+
+## 查看状态和日志
+
+```sh
+sudo systemctl status djisimbox --no-pager
 sudo -u djisimbox /usr/local/bin/djisimbox status
 sudo journalctl --namespace=djisimbox -u djisimbox --no-pager -n 30
 ```
 
-| 命令 | 用途 |
-| --- | --- |
-| `version` | 输出构建版本。 |
-| `check [-config PATH]` | 加载并校验配置与凭据，确认 runtime 位于 tmpfs，检查蜂窝主机接口并列出 ModemManager 设备；不要求服务正在运行。 |
-| `status [-config PATH]` | 加载配置并访问运行进程的私有 Unix socket，返回计数与队列预算；由服务账户执行。 |
-| `run [-config PATH]` | 前台运行，通常由 systemd 管理；启动时加载配置，并独占该运行目录。 |
+正常投递后，`queue.Messages` 应回到 `0`。若 `Pending` 持续增加，检查网络；`Failed` 大于零时检查 bot 和发送权限；`Quarantined` 大于零时核对 ICCID 是否已配置。
 
-默认配置路径为 `/etc/djisimbox/config.json`。`check` 会显示设备的 `sim_suffix`，仍应在公开日志前去掉；它不会验证 Telegram 凭据的在线有效性。`status` 不包含短信正文、SIM 标识或 token，但它的成功只证明状态端点可访问。
+实时日志使用 `sudo journalctl --namespace=djisimbox -u djisimbox -f`。日志重启后可能消失，排错前先保存；公开日志或命令输出前，去掉 token、SIM 编号和消息等私人信息。
 
-`status` 的 `storage` 应为 `memory`，`queue` 的字段如下。统计同时包含短信和来电，重启后重置。
+## 没有收到通知
 
-| 字段 | 含义 |
-| --- | --- |
-| `Messages` | 当前活动通知数，包括等待原件释放的通知。 |
-| `Pending` | 待投递文本分段数；重试中的分段也计入。 |
-| `Delivered` | 本进程累计获 Telegram 成功响应的分段数。 |
-| `Failed` | 当前永久失败的分段数，需要处理目标或凭据。 |
-| `Quarantined` | 当前没有匹配收件人的通知数。 |
-| `Forwarded` | 全部目标成功，且已完成短信原件删除确认或来电本地确认的通知数。 |
-| `Bytes` | 当前队列的逻辑字节预算用量。 |
+1. **找不到模块**：运行 `sudo mmcli -L`。列表为空时，先确认 USB 数据线接在 USB1、模块已供电，再刷新识别：
 
-查看实时日志可用 `sudo journalctl --namespace=djisimbox -u djisimbox -f`。日志保留在 RAM 且有容量限制，重启或滚动后可能消失；日志包含 SIM 显示名称和运行标识，公开前应审阅。
+   ```sh
+   sudo systemctl restart ModemManager
+   sudo udevadm trigger --action=change --subsystem-match=tty --sysname-match='ttyUSB*'
+   sudo udevadm settle
+   sudo mmcli -L
+   ```
 
-## 确认接收和投递
+2. **模块没有短信**：运行 `sudo mmcli -m MODEM_ID` 查看 SIM 是否就绪、是否注册网络，再运行 `sudo mmcli -m MODEM_ID --messaging-list-sms`。`MODEM_ID` 换成上一步编号；新发测试短信仍未出现时，先用手机验证 SIM 能否在当地接收 SMS。
+3. **模块有短信，Telegram 没有**：用上面的 `status` 和日志定位。网络可达性可用 `curl --head --connect-timeout 10 https://api.telegram.org` 检查；核对配置中的 ICCID、token、聊天编号，以及 bot 是否被屏蔽或失去权限。修正后检查配置并重启，再发一条测试短信。
+4. **报蜂窝网口未关闭**：按[网口保护步骤](install.md#2-关闭蜂窝网口)恢复规则。若未匹配，检查模块 USB 身份及是否有更早的 networkd 规则覆盖它；本项目规则只匹配 `2c7c:0125`。
+5. **短信正常，来电没有通知**：程序不会自动配置模块的来电服务；不同 SIM、固件和运营商需单独验证。进一步诊断见[VoLTE 研究](https://github.com/samuelncui/djisimbox/blob/main/docs/development/volte-research.md)。
 
-短信通知标题为 `短信通知`，之后依次是可取得的 `SIM`、`号码`、`时间`，空行后为短信正文。正文按 Unicode 边界分段，使用纯文本发送。短信时间来自 modem，缺失时省略。
+### 查不到 Telegram 聊天编号
 
-来电通知标题为 `来电通知`，使用同样的字段顺序；号码不可取得时显示 `未知号码`，时间为本地第一次观察到响铃的时间。程序仅发送文字通知，来电本身仍由模块和运营商处理。
+`getUpdates` 为空时，给 bot 再发一条消息后查询。已有其他程序或 Webhook 使用该 bot 时，沿用它已知的聊天编号，或新建 bot；不要关闭现有 Webhook。本程序发送通知不需要持续查询更新。
 
-验收时分别检查以下结果：
+## 断网、重启与换卡
 
-1. 普通短信在全部目标出现，长短信分段顺序正确；日志出现 `Telegram delivery confirmed`。
-2. 所有目标成功后出现 `notification delivered to all recipients; source released`，队列条目释放。对于短信，可用 `sudo mmcli -m ID --messaging-list-sms` 确认该原件已删除，`ID` 替换为实际 modem ID。
-3. 若需要来电通知，真实呼入能进入 ModemManager 的来电对象并生成 Telegram 通知。`voice: true`、LTE 注册或 IMS 状态都不能替代该检查。
-4. 蜂窝主机接口持续关闭、没有地址，默认路由仍经独立网络。使用 `ip -s link show dev "$MODEM_IFACE"` 比较测试前后计数，变量取安装时确认的模块网口名。
+断网后会重试，短信在所有收件人收到前保留在模块；模块存储有限，长期断网可能收满。重启可能重复发送尚未删除的短信，也可能丢失待发来电提醒。
 
-## 常见问题
+换 SIM 前先等 `queue.Messages` 变为 `0`，再用 `sudo mmcli -m MODEM_ID --messaging-list-sms` 确认模块没有旧短信；有旧短信时先处理，避免发给新卡的收件人。
 
-| 现象 | 处理 |
-| --- | --- |
-| `cellular host interface must be down without addresses` | 检查实际网口、USB 身份、networkd 首个匹配规则及残留地址，恢复[安装时的保护](install.md#2-先保护蜂窝网口)后再启动。 |
-| `runtime_dir must be on tmpfs` | 使用默认 `/run/djisimbox`，检查 `/run` 的文件系统和 systemd 的 `RuntimeDirectory`。 |
-| `check` 的 `modems` 为空 | 检查供电、USB 数据连接、ModemManager、SIM 与串口识别。成功退出不等于找到硬件。 |
-| `Quarantined` 大于零 | 核对完整 ICCID 是否有路由、身份是否可读取；按[配置说明](configuration.md)修正并重启。 |
-| `Pending` 持续增加 | 检查独立网络、DNS、HTTPS 与 Telegram 可达性。临时网络错误和限流自动退避重试，观察模块剩余短信容量。 |
-| `Failed` 大于零或日志出现 `Telegram destination requires attention` | 核对 bot token、目标数字 ID、bot 是否被屏蔽或失去发送权限；修复后重启以重新读取保留短信。已成功目标可能重复收到。 |
-| Telegram 全部成功但 `Messages` 尚未释放 | 查看原件删除/确认错误；程序保留条目并重试。清理 modem 原件会改变恢复来源，先确认各目标已收到。 |
-| 短信正常、来电没有通知 | 检查 Voice 接口、运营商/SIM 的来电服务及 IMS/VoLTE。按[硬件研究](https://github.com/samuelncui/djisimbox/blob/main/docs/development/volte-research.md)的证据边界诊断，配置变更后分别复验来电和短信。 |
-| modem、SIM 或 ModemManager 发生变更后服务重启 | 程序用重启重新建立来源关系，systemd 会重试启动；仍保留的短信可能重复发送。 |
+## 升级或停用
 
-## 断网、重启和换卡
+按[下载步骤](install.md#1-下载程序)取得新包，在新的空目录中校验并解包，保留现有 `/etc/djisimbox` 配置。若版本说明要求更新部署文件，先重新复制[服务文件](install.md#安装服务文件)并执行 `sudo systemctl daemon-reload`；日志配置变更后另执行 `sudo systemctl restart systemd-journald@djisimbox`。
 
-短信只有在所有目标的全部分段成功后才删除。暂时断网或队列满时，未接纳的短信留在 modem；可容纳的时间受模块存储容量限制。永久失败的目标也会阻止原件删除。完整断电后 modem 是否保留原件需要按具体硬件验证。
-
-内存中的投递记录随重启消失，无法保证仅发送一次。来电没有可供恢复的短信原件，服务停机、过短响铃、队列拒绝或重启可能丢失通知；已入队通知在同一次进程中可等待网络恢复。换 SIM 前排空该 modem 的短信，以免把旧消息归给新 SIM。
-
-## 升级与卸载
-
-取得并校验新包后，先查看 `status`，尽量等队列清空且没有来电。停止服务，将新包内的程序替换到原位置，再启动并检查版本、状态、短信和来电。以下命令从新包目录执行：
+等 `queue.Messages` 为 `0` 且没有来电后，从新包目录执行：
 
 ```sh
 sudo systemctl stop djisimbox
@@ -78,12 +91,12 @@ sudo systemctl start djisimbox
 sudo -u djisimbox /usr/local/bin/djisimbox status
 ```
 
-保留现有 `/etc/djisimbox`。若该版本的部署文件有变化，按安装指南更新对应文件并执行 `sudo systemctl daemon-reload`；日志配置更新还需重启 `systemd-journald@djisimbox`，使新限制生效。重启带来的重复短信和来电丢失语义同上。
+最后发送测试短信确认。
 
-停止并取消开机启动：
+停止服务并取消开机启动：
 
 ```sh
 sudo systemctl disable --now djisimbox
 ```
 
-卸载时移除本程序的 binary、systemd unit、Polkit 规则、日志命名空间配置及其 drop-in，执行 `sudo systemctl daemon-reload`。按自己的保留策略处理静态配置与凭据。蜂窝网口保护涉及 SIM 的数据使用政策，保留该规则，直到明确准备启用主机蜂窝数据。
+停用后保留蜂窝网口保护规则，直到你准备启用蜂窝数据。

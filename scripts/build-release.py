@@ -26,7 +26,6 @@ SOURCE_FILES = (
     "examples/config.json",
     "examples/secrets.json",
     "docs/user/install.md",
-    "docs/user/configuration.md",
     "docs/user/operations.md",
 )
 MODULE_LICENSES = {

@@ -6,7 +6,7 @@
 
 在 `QDC507GLEFM21_01.001.01.005` 上，原 `OpenMkt-Commercial-CU` 配置出现过短信可收而呼入不可达。仅设置 IMS override 后，查询仍为 `1,0`；这只说明该次修改没有完成来电启用，未证明运营商拒绝的具体原因。
 
-后续选择模块已有的 `ROW_Generic_3GPP`，保持 IMS override 为 `1`，模块重启后查询变为 `1,1`，可见 PDP 配置出现 `ims` APN。真实来电通知和短信均完成 Telegram 投递，见[硬件验证](hardware.md)。该结果只适用于被测组合，ROW 并非所有 SIM/网络的通用配置。
+后续选择模块已有的 `ROW_Generic_3GPP`，保持 IMS override 为 `1`，模块重启后查询变为 `1,1`，可见 PDP 配置出现 `ims` APN。`AutoSel=0`，主机侧自动连接设置读回 `0`。真实来电通知和短信均完成 Telegram 投递，见[硬件验证](hardware.md)。该结果只适用于被测组合，ROW 并非所有 SIM/网络的通用配置。
 
 [Quectel IMS Application Note §1.2–1.3](https://quectel.com/content/uploads/2024/02/Quectel_EC2xEG9xEG2x-GEM05_Series_IMS_Application_Note_V1.0-3.pdf#page=9)说明 MBN 自动选择与 SIM 身份有关，切换 profile 会应用 NV/EFS 默认值，可能覆盖原有 AT 设置。因此，漫游网络名称不足以决定应选哪个 MBN，选回原 profile 也不等于完整恢复所有 NV 状态。
 

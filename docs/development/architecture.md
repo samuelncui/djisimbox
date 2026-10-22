@@ -55,7 +55,7 @@ flowchart LR
 
 systemd 单元使用专用账户、只读系统目录、无 capabilities、禁用服务 swap 和 core dump。日志命名空间使用容量受限的 volatile journal，关闭转发，配套 drop-in 清除持久 `LogsDirectory`。这些约束覆盖本服务及其日志；主机系统与 modem 固件仍有各自的存储行为。
 
-部署阶段先保护蜂窝主机网口。networkd 按 USB `2c7c:0125` 保持接口关闭并阻止地址配置；应用同时检查该身份和 ModemManager 报告的网口。程序不会创建或连接数据 bearer，必要的 modem 启用用于接收注册。Polkit 的权限粒度比实际调用更大，见[安装说明](../user/install.md)。
+部署阶段先保护蜂窝主机网口。networkd 按 USB `2c7c:0125` 保持接口关闭并阻止地址配置；应用同时检查该身份和 ModemManager 报告的网口。程序不会创建或连接数据 bearer，必要的 modem 启用用于接收注册。Polkit 授予专用账户 `Messaging` 和 `Device.Control` 权限，粒度大于程序实际使用的接收、原件删除与模块启用操作。
 
 主机保护无法限制固件内部 IMS 流量，不能作为免漫游费用保证。[ModemManager 的 LTE 连接说明](https://modemmanager.org/docs/modemmanager/ip-connectivity-setup-in-lte-modems/)区分模块注册、初始 bearer 与主机数据路径。
 
