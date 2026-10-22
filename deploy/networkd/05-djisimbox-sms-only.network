@@ -1,0 +1,12 @@
+# Keep host data interfaces for the verified DJI modem down; USB serial stays available.
+[Match]
+Property=ID_VENDOR_ID=2c7c ID_MODEL_ID=0125
+
+[Link]
+ActivationPolicy=always-down
+RequiredForOnline=no
+
+[Network]
+DHCP=no
+LinkLocalAddressing=no
+IPv6AcceptRA=no

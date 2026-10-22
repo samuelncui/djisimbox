@@ -1,0 +1,8 @@
+// ModemManager authorizes SMS storage operations and modem enable through these actions.
+polkit.addRule(function(action, subject) {
+    if (subject.user === "djisimbox" &&
+        (action.id === "org.freedesktop.ModemManager1.Messaging" ||
+         action.id === "org.freedesktop.ModemManager1.Device.Control")) {
+        return polkit.Result.YES;
+    }
+});

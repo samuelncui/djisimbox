@@ -1,0 +1,35 @@
+[Unit]
+Description=Receive SMS and forward to configured Telegram chats
+Wants=network-online.target
+After=network-online.target ModemManager.service systemd-networkd.service
+Requires=ModemManager.service
+
+[Service]
+Type=simple
+User=djisimbox
+Group=djisimbox
+ExecStart=/usr/local/bin/djisimbox run -config /etc/djisimbox/config.json
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+RuntimeDirectory=djisimbox
+RuntimeDirectoryMode=0700
+LogNamespace=djisimbox
+MemorySwapMax=0
+LimitCORE=0
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
