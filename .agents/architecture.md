@@ -72,6 +72,6 @@ go mod verify
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o bin/djisimbox-linux-arm64 ./cmd/djisimbox
 ```
 
-交叉编译可在开发机完成，板上仅需运行依赖。安装时以 `bin/djisimbox-linux-arm64` 作为 binary 来源，部署文件沿用[安装指南](../user/install.md)。版本注入、发布包 allowlist 与 CI 见[发布流程](releasing.md)。
+交叉编译可在开发机完成，板上仅需运行依赖。安装时以 `bin/djisimbox-linux-arm64` 作为 binary 来源，部署文件沿用[安装指南](../docs/install.zh-CN.md)。版本注入、发布包 allowlist 与 CI 见[发布流程](releasing.md)。
 
 维护的自动化测试覆盖路由隔离、容量、Unicode、重试、公平调度、完成与原件释放、错误脱敏、私有状态、真实隔离 D-Bus 信号及 daemon 更换。真实设备结论与未验证项见[硬件验证](hardware.md)。协议依据另见 [Messaging/SMS API](https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/gdbus-org.freedesktop.ModemManager1.Modem.Messaging.html)、[Telegram sendMessage](https://core.telegram.org/bots/api#sendmessage) 和 [volatile journal](https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html)。

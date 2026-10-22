@@ -6,4 +6,4 @@
 - [QDC507 VoLTE 研究](volte-research.md)：来电配置实验、公开线索与后续验证。
 - [Zero 2W 启动与 USB](zero2w-usb.md)：SSH 入口、USB 角色与恢复排查。
 
-安装和日常操作见[用户文档](../user/install.md)。
+安装和日常操作见[用户文档](../docs/install.zh-CN.md)。

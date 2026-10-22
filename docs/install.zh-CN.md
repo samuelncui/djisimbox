@@ -1,6 +1,8 @@
 # 安装到 Zero 2W
 
-本指南使用 ARM64 Armbian / Debian 13，网络由 systemd-networkd 管理。先用 [Armbian 镜像](https://armbian.com/boards/orangepizero2w)准备 microSD 系统，配置 Wi-Fi 并确认能 SSH 登录。USB0 接电源，USB1 用数据线连接蜂窝模块；**先让模块保持断开，完成第 2 步再连接。**
+[English](install.md) · **简体中文**
+
+本指南使用 ARM64 Armbian / Debian 13，网络由 systemd-networkd 管理。先用 [Armbian 镜像](https://armbian.com/boards/orangepizero2w)准备 microSD 系统，配置 Wi-Fi 并确认能 SSH 登录。USB0 接电源，USB1 用数据线连接蜂窝模块；**先让模块保持断开，到第 2 步提示时再连接。**
 
 ## 1. 下载程序
 
@@ -62,7 +64,7 @@ sudo mmcli -m MODEM_ID
 sudo mmcli -i SIM_ID
 ```
 
-复制 SIM 的完整 **ICCID**，不要使用电话号码或 IMSI。找不到模块时见[排错](operations.md#没有收到通知)。
+复制 SIM 的完整 **ICCID**，不要使用电话号码或 IMSI。找不到模块时见[排错](operations.zh-CN.md#没有收到通知)。
 
 通过 [BotFather](https://core.telegram.org/bots/features#botfather) 创建 bot，保存它给出的 token。让收件人在 Telegram 私聊该 bot，发送 `/start`。在板子的 Bash 终端执行，按提示输入 token：
 
@@ -79,7 +81,7 @@ unset BOT_TOKEN
 {"result":[{"message":{"chat":{"id":123456789},"text":"/start"}}]}
 ```
 
-结果为空时重新发 `/start` 后查询。已有 bot 查询报冲突时见[排错](operations.md#查不到-telegram-聊天编号)；群组和频道见[增加收件人](operations.md#修改收件人或增加-sim)。
+结果为空时重新发 `/start` 后查询。已有 bot 查询报冲突时见[排错](operations.zh-CN.md#查不到-telegram-聊天编号)；群组和频道见[增加收件人](operations.zh-CN.md#修改收件人或增加-sim)。
 
 ## 4. 填写配置并安装服务
 
@@ -129,4 +131,4 @@ SIM: 示例卡
 测试短信
 ```
 
-需要来电提醒时，再拨入该 SIM，确认收到 `来电通知`。`check` 不会替你发送测试通知。后续改收件人、升级或查故障，见[日常使用](operations.md)。
+需要来电提醒时，再拨入该 SIM，确认收到 `来电通知`。`check` 不会替你发送测试通知。后续改收件人、升级或查故障，见[日常使用](operations.zh-CN.md)。

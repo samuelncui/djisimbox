@@ -1,5 +1,7 @@
 # 日常使用
 
+[English](operations.md) · **简体中文**
+
 ## 修改收件人或增加 SIM
 
 编辑 `/etc/djisimbox/config.json`。每张 SIM 在 `routes` 中占一项；每位收件人在该项的 `recipients` 中占一项。下面示例把第一张卡发给两人，第二张卡发给另一人，所有编号都需替换：
@@ -27,7 +29,7 @@
 }
 ```
 
-新收件人需先给 bot 发 `/start`，再按[安装步骤](install.md#3-取得-sim-编号和-telegram-收件人)取得聊天编号。群组中先加入 bot 并发 `/start@你的Bot用户名`；频道中将 bot 设为有发消息权限的管理员，再发布测试消息。频道编号取 `channel_post.chat.id`；群组和频道编号的负号要保留。
+新收件人需先给 bot 发 `/start`，再按[安装步骤](install.zh-CN.md#3-取得-sim-编号和-telegram-收件人)取得聊天编号。群组中先加入 bot 并发 `/start@你的Bot用户名`；频道中将 bot 设为有发消息权限的管理员，再发布测试消息。频道编号取 `channel_post.chat.id`；群组和频道编号的负号要保留。
 
 需要不同 bot 时，在 `/etc/djisimbox/secrets.json` 的 `bots` 中增加一项，例如 `"family": "另一个 bot 的完整 token"`，并把相应收件人的 `bot` 改为 `family`。
 
@@ -64,8 +66,8 @@ sudo journalctl --namespace=djisimbox -u djisimbox --no-pager -n 30
 
 2. **模块没有短信**：运行 `sudo mmcli -m MODEM_ID` 查看 SIM 是否就绪、是否注册网络，再运行 `sudo mmcli -m MODEM_ID --messaging-list-sms`。`MODEM_ID` 换成上一步编号；新发测试短信仍未出现时，先用手机验证 SIM 能否在当地接收 SMS。
 3. **模块有短信，Telegram 没有**：用上面的 `status` 和日志定位。网络可达性可用 `curl --head --connect-timeout 10 https://api.telegram.org` 检查；核对配置中的 ICCID、token、聊天编号，以及 bot 是否被屏蔽或失去权限。修正后检查配置并重启，再发一条测试短信。
-4. **报蜂窝网口未关闭**：按[网口保护步骤](install.md#2-关闭蜂窝网口)恢复规则。若未匹配，检查模块 USB 身份及是否有更早的 networkd 规则覆盖它；本项目规则只匹配 `2c7c:0125`。
-5. **短信正常，来电没有通知**：程序不会自动配置模块的来电服务；不同 SIM、固件和运营商需单独验证。进一步诊断见[VoLTE 研究](https://github.com/samuelncui/djisimbox/blob/main/docs/development/volte-research.md)。
+4. **报蜂窝网口未关闭**：按[网口保护步骤](install.zh-CN.md#2-关闭蜂窝网口)恢复规则。若未匹配，检查模块 USB 身份及是否有更早的 networkd 规则覆盖它；本项目规则只匹配 `2c7c:0125`。
+5. **短信正常，来电没有通知**：程序不会自动配置模块的来电服务；不同 SIM、固件和运营商需单独验证。进一步诊断见[VoLTE 研究](https://github.com/samuelncui/djisimbox/blob/main/.agents/volte-research.md)。
 
 ### 查不到 Telegram 聊天编号
 
@@ -79,7 +81,7 @@ sudo journalctl --namespace=djisimbox -u djisimbox --no-pager -n 30
 
 ## 升级或停用
 
-按[下载步骤](install.md#1-下载程序)取得新包，在新的空目录中校验并解包，保留现有 `/etc/djisimbox` 配置。若版本说明要求更新部署文件，先重新复制[服务文件](install.md#安装服务文件)并执行 `sudo systemctl daemon-reload`；日志配置变更后另执行 `sudo systemctl restart systemd-journald@djisimbox`。
+按[下载步骤](install.zh-CN.md#1-下载程序)取得新包，在新的空目录中校验并解包，保留现有 `/etc/djisimbox` 配置。若版本说明要求更新部署文件，先重新复制[服务文件](install.zh-CN.md#安装服务文件)并执行 `sudo systemctl daemon-reload`；日志配置变更后另执行 `sudo systemctl restart systemd-journald@djisimbox`。
 
 等 `queue.Messages` 为 `0` 且没有来电后，从新包目录执行：
 

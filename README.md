@@ -1,21 +1,23 @@
 # DJI SIM Box
 
-把 USB 蜂窝模块收到的短信和来电文字通知转发到 Telegram。每张 SIM 可指定不同收件人，也可同时发给多人。程序在 Orange Pi Zero 2W 上独立运行，通过 Wi-Fi 联网。
+**English** · [简体中文](README.zh-CN.md)
 
-**[开始安装](docs/user/install.md) · [日常使用与排错](docs/user/operations.md)**
+Forward SMS messages and incoming call text alerts from a USB cellular modem to Telegram. Each SIM can have its own recipients, including multiple people. The program runs on a standalone Orange Pi Zero 2W connected over Wi-Fi.
 
-## 准备什么
+**[Install](docs/install.md) · [Use and troubleshoot](docs/operations.md)**
 
-- Zero 2W、装有 Armbian / Debian 13 的 microSD 卡、供电和 USB 数据线。
-- DJI 第一代蜂窝模块和已激活、关闭 PIN 锁的 SIM；多张卡同时在线需要多个模块。
-- 能访问 Telegram 的 Wi-Fi、板子的 SSH 登录方式，以及一个 Telegram bot。
+## What you need
 
-当前为早期版本，以上组合已验证短信和来电通知。其他模块、固件或运营商组合需自行测试；多模块同时运行尚未完成实机验证。
+- A Zero 2W, a microSD card running Armbian / Debian 13, a power supply, and a USB data cable.
+- A first-generation DJI cellular modem and an activated SIM with its PIN lock disabled. Using several SIMs at once requires several modems.
+- Wi-Fi with access to Telegram, SSH access to the board, and a Telegram bot.
 
-## 使用前了解
+This is an early version. SMS and call alerts have been verified with the setup above. Other modems, firmware, and carriers need testing; running multiple modems together has not been tested on hardware.
 
-- 安装时关闭蜂窝网口，Telegram 走 Wi-Fi。SIM 套餐和漫游仍可能产生费用，请向运营商确认。
-- 短信发给所有收件人后会从模块删除。重启可能重复转发尚未删除的短信，停机期间可能漏掉来电通知。
-- 来电功能只发文字提醒，不接听或传输通话音频；能否收到提醒需要实际拨入测试。
+## Before you use it
 
-[开发与硬件研究](https://github.com/samuelncui/djisimbox/blob/main/docs/development/README.md) · [MIT License](LICENSE)
+- Disable the board's cellular network interface during installation so Telegram uses Wi-Fi. SIM plans and roaming may still incur charges; check with your carrier.
+- SMS messages are deleted from the modem after delivery to all recipients. A restart may resend messages that have not yet been deleted, and call alerts may be missed during downtime.
+- Call support sends text alerts only. It does not answer calls or carry call audio; make a test call to confirm alerts work.
+
+[Development and hardware research](https://github.com/samuelncui/djisimbox/blob/main/.agents/README.md) · [MIT License](LICENSE)

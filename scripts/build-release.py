@@ -17,6 +17,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_FILES = (
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "deploy/networkd/05-djisimbox-sms-only.network",
     "deploy/polkit/50-djisimbox.rules",
@@ -25,8 +26,10 @@ SOURCE_FILES = (
     "deploy/systemd/journald-djisimbox-volatile.conf",
     "examples/config.json",
     "examples/secrets.json",
-    "docs/user/install.md",
-    "docs/user/operations.md",
+    "docs/install.md",
+    "docs/install.zh-CN.md",
+    "docs/operations.md",
+    "docs/operations.zh-CN.md",
 )
 MODULE_LICENSES = {
     "github.com/godbus/dbus/v5": ("LICENSE",),

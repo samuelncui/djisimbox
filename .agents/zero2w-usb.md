@@ -21,4 +21,4 @@ lsusb -t
 sudo udevadm monitor --kernel --subsystem-match=usb
 ```
 
-这些命令用于枚举和观察，不建立管理功能。主板可通过 Wi-Fi 管理后，按[安装指南](../user/install.md)先保护蜂窝主机网口，再连接模块。已验证的运行组合见[硬件验证](hardware.md)。
+这些命令用于枚举和观察，不建立管理功能。主板可通过 Wi-Fi 管理后，按[安装指南](../docs/install.zh-CN.md)先保护蜂窝主机网口，再连接模块。已验证的运行组合见[硬件验证](hardware.md)。
