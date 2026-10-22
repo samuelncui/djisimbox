@@ -19,6 +19,7 @@ SOURCE_FILES = (
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
+    "install.sh",
     "deploy/networkd/05-djisimbox-sms-only.network",
     "deploy/polkit/50-djisimbox.rules",
     "deploy/systemd/djisimbox.service",
@@ -132,7 +133,7 @@ def package(arch, version, output, temporary, third_party):
                 info = tar.gettarinfo(str(source), arcname=f"{name}/{relative}")
                 info.uid = info.gid = info.mtime = 0
                 info.uname = info.gname = ""
-                info.mode = 0o755 if relative == "djisimbox" else 0o644
+                info.mode = 0o755 if relative in ("djisimbox", "install.sh") else 0o644
                 info.pax_headers = {}
                 with source.open("rb") as content:
                     tar.addfile(info, content)
@@ -143,6 +144,10 @@ def package(arch, version, output, temporary, third_party):
             raise ValueError(f"archive contents differ from allowlist: {name}")
         if any(not member.isfile() for member in tar):
             raise ValueError(f"archive contains a non-regular file: {name}")
+        for executable in ("djisimbox", "install.sh"):
+            if tar.getmember(f"{name}/{executable}").mode != 0o755:
+                raise ValueError(f"archive entry is not executable: {executable}")
+        run("bash", "-n", str(directory / "install.sh"))
         binary = directory / "checked-djisimbox"
         with binary.open("wb") as target, tar.extractfile(f"{name}/djisimbox") as source:
             shutil.copyfileobj(source, target)

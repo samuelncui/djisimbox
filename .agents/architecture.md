@@ -1,13 +1,13 @@
 # 架构与投递语义
 
-DJI SIM Box 独立运行在 Orange Pi Zero 2W 上。USB modem 与 ModemManager 负责蜂窝接收和协议处理，Go 进程通过系统 D-Bus 读取事件，经 Wi-Fi 向 Telegram 投递；运行时无需 NAS、共享文件系统或远端数据库。
+DJI SIM Box 独立运行在 Linux 主机上。USB modem 与 ModemManager 负责蜂窝接收和协议处理，Go 进程通过系统 D-Bus 读取事件，经主机网络向 Telegram 投递；运行时无需共享文件系统或远端数据库。
 
 ```mermaid
 flowchart LR
     M["USB modem：保留短信原件"] --> MM["ModemManager / system D-Bus"]
-    MM --> A["Zero 2W 上的 Go 进程"]
+    MM --> A["Linux 主机上的 Go 进程"]
     A <--> Q["有界 RAM 队列"]
-    A --> W["Wi-Fi"] --> T["按 ICCID 选择的 Telegram 目标"]
+    A --> W["主机网络"] --> T["按 ICCID 选择的 Telegram 目标"]
     T --> ACK["全部目标的全部分段成功"] --> D["删除 modem 短信原件"]
 ```
 
@@ -49,7 +49,7 @@ flowchart LR
 
 ## 内存、日志与主机保护
 
-默认最多 10000 条活动通知及 16 MiB 逻辑内容预算。预算包含原文、元数据、渲染分段和固定开销，不是 Go 堆内存上限。队列满时短信留在 modem；实际可用容量通常先受 modem 存储限制，被测设备报告 255 个槽位。
+默认最多 10000 条活动通知及 16 MiB 逻辑内容预算。预算包含原文、元数据、渲染分段和固定开销，不是 Go 堆内存上限。队列满时短信留在 modem；实际可用容量还受 modem 存储限制。
 
 运行锁和 socket 位于 tmpfs `/run/djisimbox`；程序拒绝其他文件系统，不创建队列快照或重试文件。状态 socket 为 `0600`，只提供数量与预算。静态配置、凭据和 binary 是安装文件。
 
@@ -72,6 +72,6 @@ go mod verify
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o bin/djisimbox-linux-arm64 ./cmd/djisimbox
 ```
 
-交叉编译可在开发机完成，板上仅需运行依赖。安装时以 `bin/djisimbox-linux-arm64` 作为 binary 来源，部署文件沿用[安装指南](../docs/install.zh-CN.md)。版本注入、发布包 allowlist 与 CI 见[发布流程](releasing.md)。
+交叉编译可在开发机完成，目标主机仅需运行依赖。安装时以 `bin/djisimbox-linux-arm64` 作为 binary 来源，部署文件沿用[安装指南](../docs/install.zh-CN.md)。版本注入、发布包 allowlist 与 CI 见[发布流程](releasing.md)。
 
-维护的自动化测试覆盖路由隔离、容量、Unicode、重试、公平调度、完成与原件释放、错误脱敏、私有状态、真实隔离 D-Bus 信号及 daemon 更换。真实设备结论与未验证项见[硬件验证](hardware.md)。协议依据另见 [Messaging/SMS API](https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/gdbus-org.freedesktop.ModemManager1.Modem.Messaging.html)、[Telegram sendMessage](https://core.telegram.org/bots/api#sendmessage) 和 [volatile journal](https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html)。
+维护的自动化测试覆盖路由隔离、容量、Unicode、重试、公平调度、完成与原件释放、错误脱敏、私有状态、真实隔离 D-Bus 信号及 daemon 更换。硬件兼容范围见[用户文档](../README.zh-CN.md)。协议依据另见 [Messaging/SMS API](https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/gdbus-org.freedesktop.ModemManager1.Modem.Messaging.html)、[Telegram sendMessage](https://core.telegram.org/bots/api#sendmessage) 和 [volatile journal](https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html)。

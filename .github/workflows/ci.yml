@@ -28,6 +28,11 @@ jobs:
           persist-credentials: false
       - name: Scan workspace and Git history for secrets
         run: bash scripts/check-secrets.sh
+      - name: Check installer with isolated fixtures
+        run: |
+          bash -n install.sh
+          command -v jq
+          python3 -B -m unittest discover -s tests -p 'test_install.py' -v
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.x'

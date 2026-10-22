@@ -1,14 +1,14 @@
 # 构建与发布
 
-Zero 2W 使用 `linux/arm64` 静态二进制，通用 64 位 Linux 主机可使用 `linux/amd64`。运行目标机器无需安装 Go；ModemManager、systemd 和配置要求见[安装文档](../docs/install.zh-CN.md)。
+运行包提供 `linux/arm64` 和 `linux/amd64` 静态二进制。运行目标机器无需安装 Go；ModemManager、systemd 和配置要求见[安装文档](../docs/install.zh-CN.md)。
 
 ## CI 与下载
 
 `.github/workflows/ci.yml` 在 PR、`main` 推送和手动运行时执行同一条验证与打包流程：
 
-1. 以 `fetch-depth: 0` 获取全部历史，通过 `bash scripts/check-secrets.sh` 检查工作目录和所有已获取 Git refs 的历史；脚本固定 Gitleaks 版本和下载摘要，输出脱敏。然后检查 Go 格式、依赖完整性、`go vet` 和 `go test -race -count=1 ./...`。测试使用独立的 D-Bus 守护进程与合成数据，无需真实 modem、Telegram bot 或主机 `/etc` 配置。
+1. 以 `fetch-depth: 0` 获取全部历史，通过 `bash scripts/check-secrets.sh` 检查工作目录和所有已获取 Git refs 的历史；脚本固定 Gitleaks 版本和下载摘要，输出脱敏。然后执行安装器测试，并检查 Go 格式、依赖完整性、`go vet` 和 `go test -race -count=1 ./...`。测试使用独立的 D-Bus 守护进程与合成数据，无需真实 modem、Telegram bot 或主机 `/etc` 配置。
 2. 验证成功后，以 `CGO_ENABLED=0`、`-trimpath`、`-buildvcs=false` 编译 ARM64 和 amd64。检查包内 ELF 架构、动态解释器与动态库依赖，并在 amd64 构建机执行包内 `djisimbox version`。
-3. 上传名为 `djisimbox-dev-<12 位提交 SHA>-linux` 的 Actions artifact，保留 14 天；下载步骤见[安装指南](../docs/install.zh-CN.md#1-下载程序)。手动运行不会创建 Release。
+3. 上传名为 `djisimbox-dev-<12 位提交 SHA>-linux` 的 Actions artifact，保留 14 天；下载步骤见[安装指南](../docs/install.zh-CN.md#1-下载并校验)。手动运行不会创建 Release。
 
 工作流使用 `go.mod` 要求的 Go 1.26 系列最新可用补丁。`verify`、`build` 只有 `contents: read`，checkout 不保留凭证；只有最后的 `release` 作业具有 `contents: write`，它只下载同次构建的 artifact 并调用 GitHub CLI。官方 Actions 均固定完整提交 SHA，旁注标明核验过的版本；更新时一起核对上游发布与 SHA。
 
@@ -32,23 +32,26 @@ SHA256SUMS
 
 每个压缩包有同名根目录，文件清单固定在 `scripts/build-release.py` 的 `SOURCE_FILES`：
 
-- `djisimbox`、`README.md`、`README.zh-CN.md`、项目 `LICENSE`。
+- `djisimbox`、`install.sh`、`README.md`、`README.zh-CN.md`、项目 `LICENSE`。
 - `deploy/` 中的五个随项目维护的 systemd、polkit、networkd 文件。
 - `examples/config.json`、`examples/secrets.json`，只包含公开占位值。
 - `docs/install.md`、`operations.md` 及对应的 `*.zh-CN.md`。
 - `THIRD_PARTY_NOTICES`，包含构建所用 Go 运行时及内置依赖的许可证、PATENTS，以及 `go.mod` 固定的 godbus/dbus、x/sys 许可证。
 
-脚本逐个复制清单中的普通文件，新增文件需主动加入清单。运行配置、凭证、运行状态、`.git`、开发记录和研究文档不会因位于工作目录而自动入包。依赖许可证从 `go mod download` 后通过 `go mod verify` 的模块目录读取；新增、删除或本地替换依赖时，先审阅并更新许可证清单。压缩包元数据统一为固定时间、UID/GID 和文件权限；二进制保留执行权限。
+脚本逐个复制清单中的普通文件，新增文件需主动加入清单。运行配置、凭证、运行状态、`.git`、开发记录和研究文档不会因位于工作目录而自动入包。依赖许可证从 `go mod download` 后通过 `go mod verify` 的模块目录读取；新增、删除或本地替换依赖时，先审阅并更新许可证清单。压缩包元数据统一为固定时间、UID/GID 和文件权限；`djisimbox` 和 `install.sh` 保留执行权限。
+
+解压后，在运行包根目录执行 `sudo ./install.sh` 完成首次安装或升级；配置和凭据要求见[安装文档](../docs/install.zh-CN.md)。
 
 GitHub 自动生成的 Source code 压缩包是标签对应的公开仓库源码，与上述运行包不同；仓库公开前仍需审阅所有将提交的文件和历史。
 
 ## 本地复现
 
-在 Linux amd64（x86_64）上准备 Go 1.26 或更新版本、Python 3、curl、binutils（提供 `readelf`）、`dbus-daemon` 和 C 编译工具链（Debian/Ubuntu 为 `build-essential`），从仓库根目录运行：
+在 Linux amd64（x86_64）上准备 Go 1.26 或更新版本、Python 3、Bash、jq、curl、binutils（提供 `readelf`）、`dbus-daemon` 和 C 编译工具链（Debian/Ubuntu 为 `build-essential`），从仓库根目录运行：
 
 ```sh
 command -v dbus-daemon
 bash scripts/check-secrets.sh
+python3 -B -m unittest discover -s tests -p 'test_install.py' -v
 test -z "$(gofmt -l cmd internal)"
 go mod download
 go mod verify

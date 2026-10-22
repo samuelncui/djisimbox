@@ -1,5 +1,6 @@
 /bin/
 /dist/
+/.local/
 /config.json
 *.db
 *.db-shm
