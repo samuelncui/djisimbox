@@ -41,13 +41,13 @@ The installer protects the DJI modem's USB network interfaces (`2c7c:0125`) befo
 
 On first setup, follow the prompts to:
 
-1. Connect the modem when asked, choose a SIM by the last six ICCID digits shown, and enter the SIM name to show in notifications.
+1. Connect the modem when asked, and choose a SIM by the last six ICCID digits shown.
 2. Enter the bot token; your input is hidden.
-3. Enter the intended recipient's numeric chat ID. The installer queries `getUpdates` to show available IDs when possible; only the ID you enter receives notifications.
+3. Have the recipient send `/start` to the bot, or any new message if they chatted with it before, then enter their numeric chat ID. The installer queries `getUpdates` to show available IDs when possible; only the ID you enter receives notifications.
 
 If the bot already has a Webhook or another program polling its updates, enter a known chat ID manually or use a new bot. Keep the existing Webhook enabled. See [chat ID help](operations.md#find-a-telegram-chat-id) for groups, channels, or an empty result.
 
-The installer writes private configuration files in `/etc/djisimbox`, checks the configuration and modem, and starts the service with startup at boot enabled. Running it again preserves existing configuration and tokens while updating the program and service files. First setup configures one SIM and one recipient; [add more routes or recipients](operations.md#change-recipients-or-add-a-sim) afterward.
+The installer writes a commented `config.yaml` and a private `secrets.yaml` in `/etc/djisimbox`, checks the configuration and modem, and starts the service with startup at boot enabled. Running it again preserves existing `config.yaml` and `secrets.yaml` while updating the program and service files. First setup configures one SIM and one recipient; [add more routes or recipients](operations.md#change-recipients-or-add-a-sim) afterward.
 
 ## 3. Receive your first notification
 

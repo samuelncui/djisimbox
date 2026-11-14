@@ -59,13 +59,13 @@ valid_chat_id() {
 }
 
 configure() {
-  local directory=$1 rows attempt selection iccid='' name token updates chat index
+  local directory=$1 rows attempt selection iccid='' token updates chat index
   local -a sims
-  if [[ -e "$directory/config.json" || -L "$directory/config.json" ||
-        -e "$directory/secrets.json" || -L "$directory/secrets.json" ]]; then
-    [[ -f "$directory/config.json" && ! -L "$directory/config.json" &&
-       -f "$directory/secrets.json" && ! -L "$directory/secrets.json" ]] ||
-      die 'Both config.json and secrets.json must be regular files. Existing files were kept.'
+  if [[ -e "$directory/config.yaml" || -L "$directory/config.yaml" ||
+        -e "$directory/secrets.yaml" || -L "$directory/secrets.yaml" ]]; then
+    [[ -f "$directory/config.yaml" && ! -L "$directory/config.yaml" &&
+       -f "$directory/secrets.yaml" && ! -L "$directory/secrets.yaml" ]] ||
+      die 'Both config.yaml and secrets.yaml must be regular files. Existing files were kept.'
     printf '%s\n' 'Keeping existing configuration.'
     return
   fi
@@ -89,17 +89,12 @@ configure() {
     if [[ "$selection" == "$((index + 1))" ]]; then iccid=${sims[index]}; fi
   done
   [[ -n "$iccid" ]] || die 'Choose a SIM number from the list.'
-  read -rp 'SIM display name [SIM 1]: ' name
-  name=${name:-SIM 1}
-  jq -ne --arg name "$name" '$name | (length <= 80) and test("\\S") and
-    (test("[[:cntrl:]\u2028\u2029]") | not)' >/dev/null ||
-    die 'SIM display name must be 1-80 characters, include non-whitespace text, and have no control characters.'
   read -rsp 'Telegram bot token: ' token
   printf '\n'
   [[ "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{20,128}$ ]] || die 'Invalid bot token format.'
 
-  printf '%s\n' 'Send /start to your bot. Available chats (if the bot has received updates):'
-  read -rp 'Press Enter after sending /start: '
+  printf '%s\n' 'Send /start, or any new message if you chatted before, to your bot.'
+  read -rp 'Press Enter after sending it. Recent chats (if any): '
   if updates=$(printf 'url = "https://api.telegram.org/bot%s/getUpdates"\n' "$token" |
       curl --fail --silent --show-error --connect-timeout 10 --max-time 20 --config -); then
     jq -r '[.result[]? | (.message.chat // .channel_post.chat // empty)] |
@@ -111,10 +106,22 @@ configure() {
   read -rp 'Telegram chat ID (one recipient): ' chat
   valid_chat_id "$chat" || die 'Enter a nonzero signed 64-bit chat ID, keeping any minus sign.'
 
-  jq -n --arg iccid "$iccid" --arg name "$name" --arg chat "$chat" \
-    '{version: 1, routes: [{iccid: $iccid, name: $name,
-      recipients: [{bot: "default", chat_id: $chat}]}]}' >"$directory/config.json"
-  printf '%s' "$token" | jq -Rs '{bots: {default: .}}' >"$directory/secrets.json"
+  # Every value below matched a strict pattern, so it is safe inside YAML double quotes.
+  cat >"$directory/config.yaml" <<EOF
+# DJI SIM Box configuration. After editing, run: sudo systemctl restart djisimbox
+version: 1
+
+# One entry per SIM, matched by ICCID (the SIM card number, not the phone number).
+routes:
+  - iccid: "$iccid"
+    # Optional label; when omitted, notifications show the SIM's own phone number.
+    # name: My SIM
+    recipients:
+      - bot: default
+        chat_id: "$chat"
+EOF
+  printf '# Telegram bot tokens by name. Keep this file private.\nbots:\n  default: "%s"\n' "$token" \
+    >"$directory/secrets.yaml"
 }
 
 main() {
@@ -156,8 +163,8 @@ main() {
   fi
   install -d -m 0750 -o root -g djisimbox /etc/djisimbox
   configure /etc/djisimbox
-  chown djisimbox:djisimbox /etc/djisimbox/config.json /etc/djisimbox/secrets.json
-  chmod 0600 /etc/djisimbox/config.json /etc/djisimbox/secrets.json
+  chown djisimbox:djisimbox /etc/djisimbox/config.yaml /etc/djisimbox/secrets.yaml
+  chmod 0600 /etc/djisimbox/config.yaml /etc/djisimbox/secrets.yaml
 
   install -m 0644 "$package/deploy/polkit/50-djisimbox.rules" /etc/polkit-1/rules.d/
   install -m 0644 "$package/deploy/systemd/djisimbox.service" /etc/systemd/system/

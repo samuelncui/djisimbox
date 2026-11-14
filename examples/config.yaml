@@ -1,0 +1,20 @@
+# DJI SIM Box configuration (/etc/djisimbox/config.yaml).
+# After editing, restart the service: sudo systemctl restart djisimbox
+version: 1
+
+# One entry per SIM, matched by ICCID: the SIM card number, not the phone number.
+# Messages from a SIM without an entry are held and forwarded to nobody.
+routes:
+  - iccid: "89000000000000000001"
+    # Optional label shown in notifications. When omitted, the SIM's own phone number is shown.
+    # name: Work phone
+    recipients:
+      # bot: a name from secrets.yaml. chat_id: the Telegram chat that receives notifications.
+      - bot: default
+        chat_id: "123456789"
+
+# Optional settings, shown with their defaults:
+# secrets_file: /etc/djisimbox/secrets.yaml
+# max_pending: 10000     # notifications kept in memory, including held ones
+# max_bytes: 16777216    # memory budget for those notifications (16 MiB)
+# runtime_dir: /run/djisimbox

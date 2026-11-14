@@ -1,11 +1,12 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 const testToken = "123456789:synthetic_test_token_0123456789"
@@ -60,6 +61,86 @@ func TestLoadDefaultsAndSIMRoutes(t *testing.T) {
 	}
 	if _, ok := cfg.Route("89000000000000000003"); ok {
 		t.Fatal("unknown SIM unexpectedly received a route")
+	}
+}
+
+func TestLoadHandWrittenYAML(t *testing.T) {
+	// Operators write comments and unquoted numbers; ICCIDs and chat IDs must keep their exact digits.
+	dir := t.TempDir()
+	secretPath := filepath.Join(dir, "secrets.yaml")
+	if err := os.WriteFile(secretPath, []byte("# Bot credentials\nbots:\n  default: "+testToken+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	document := "version: 1 # format version\nsecrets_file: " + secretPath + "\nroutes:\n" +
+		"  # name omitted: notifications show the SIM's own number\n" +
+		"  - iccid: 89860121801724255100\n    recipients:\n      - bot: default\n        chat_id: 817973994\n" +
+		"  - iccid: 89860000000000001985\n    name: 工作卡\n    recipients:\n" +
+		"      - {bot: default, chat_id: -1001234567890}\n"
+	if err := os.WriteFile(path, []byte(document), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// The unnamed route stays unnamed so delivery can choose the SIM's own number.
+	first, ok := cfg.Route("89860121801724255100")
+	if !ok || first.Name != "" || first.Recipients[0].ChatID != "817973994" {
+		t.Fatalf("unquoted ICCID or chat ID changed: %+v", first)
+	}
+	second, ok := cfg.Route("89860000000000001985")
+	if !ok || second.Name != "工作卡" || second.Recipients[0].ChatID != "-1001234567890" {
+		t.Fatalf("flow-style recipient changed: %+v", second)
+	}
+	if cfg.Bots["default"] != testToken {
+		t.Fatal("unquoted bot token was not loaded")
+	}
+}
+
+func TestPublishedExamplesLoad(t *testing.T) {
+	// Copy the packaged examples privately and point the config at the example secrets.
+	dir := t.TempDir()
+	secrets, err := os.ReadFile("../../examples/secrets.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secretPath := filepath.Join(dir, "secrets.yaml")
+	if err := os.WriteFile(secretPath, secrets, 0600); err != nil {
+		t.Fatal(err)
+	}
+	document, err := os.ReadFile("../../examples/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, append(document, []byte("secrets_file: "+secretPath+"\n")...), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The examples must stay valid for the loader users run.
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("examples do not load: %v", err)
+	}
+	if _, ok := cfg.Route("89000000000000000001"); !ok {
+		t.Fatal("example route is missing")
+	}
+}
+
+func TestLoadReportsYAMLLineWithoutValues(t *testing.T) {
+	// A misspelled key points to its line without echoing the key, which could be a pasted credential.
+	path := writeFixture(t, baseDocument(), validSecrets(), 0600)
+	if err := os.WriteFile(path, []byte("version: 1\nroutes: []\n"+testToken+": true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("unknown field was accepted")
+	}
+	if !strings.Contains(err.Error(), "line 3") || strings.Contains(err.Error(), testToken) {
+		t.Fatalf("unexpected error text: %v", err)
 	}
 }
 
@@ -207,7 +288,7 @@ func TestLoadRejectsDuplicateSIM(t *testing.T) {
 	}
 }
 
-func TestLoadStrictJSONAndNoSecretLeakage(t *testing.T) {
+func TestLoadStrictYAMLAndNoSecretLeakage(t *testing.T) {
 	// Exercise decoder failures whose underlying errors can contain dynamic values.
 	cases := []struct {
 		name    string
@@ -225,6 +306,9 @@ func TestLoadStrictJSONAndNoSecretLeakage(t *testing.T) {
 		{"short token", `{"bots":{"default":"123456789:short"}}`},
 		{"long token", `{"bots":{"default":"123456789:` + strings.Repeat("x", 129) + `"}}`},
 		{"invalid token characters", `{"bots":{"default":"123456789:synthetic_test_token/0123456789"}}`},
+		{"second document", validSecrets() + "\n---\nbots:\n  default: \"" + testToken + "\"\n"},
+		{"duplicate key", "bots:\n  default: \"" + testToken + "\"\n  default: \"" + testToken + "\"\n"},
+		{"list", "- " + testToken + "\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -243,7 +327,7 @@ func TestLoadStrictJSONAndNoSecretLeakage(t *testing.T) {
 	}
 }
 
-func TestLoadStrictConfigJSON(t *testing.T) {
+func TestLoadStrictConfigYAML(t *testing.T) {
 	// Config decoding also sanitizes untrusted keys and rejects extra documents.
 	cases := []string{
 		`{"version":1,"` + testToken + `":true}`,
@@ -252,16 +336,20 @@ func TestLoadStrictConfigJSON(t *testing.T) {
 		`{"version":1} null`,
 		`null`,
 		`[]`,
+		"~\n",
+		"# only a comment\n",
+		"version: 1\n---\nversion: 1\n",
+		"version: 1\nversion: 1\n",
 	}
 	for _, data := range cases {
 		// Keep each malformed document isolated from previous decoder state.
-		path := filepath.Join(t.TempDir(), "config.json")
+		path := filepath.Join(t.TempDir(), "config.yaml")
 		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}
 		_, err := Load(path)
 		if err == nil {
-			t.Fatal("invalid configuration JSON was accepted")
+			t.Fatalf("invalid configuration YAML was accepted: %q", data)
 		}
 		if strings.Contains(err.Error(), testToken) {
 			t.Fatal("config decoder exposed an untrusted key")
@@ -302,11 +390,11 @@ func TestLoadFileBounds(t *testing.T) {
 		t.Fatal("oversized configuration was accepted")
 	}
 
-	// Neither directory inputs nor missing files are valid JSON documents.
+	// Neither directory inputs nor missing files are valid YAML documents.
 	if _, err := Load(t.TempDir()); err == nil {
 		t.Fatal("directory configuration was accepted")
 	}
-	if _, err := Load(filepath.Join(t.TempDir(), "absent.json")); err == nil {
+	if _, err := Load(filepath.Join(t.TempDir(), "absent.yaml")); err == nil {
 		t.Fatal("missing configuration was accepted")
 	}
 }
@@ -330,7 +418,7 @@ func writeFixture(t *testing.T, document map[string]any, credentials string, mod
 	t.Helper()
 	// Materialize private credentials separately from the routing document.
 	dir := t.TempDir()
-	secretPath := filepath.Join(dir, "secrets.json")
+	secretPath := filepath.Join(dir, "secrets.yaml")
 	if err := os.WriteFile(secretPath, []byte(credentials), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +428,7 @@ func writeFixture(t *testing.T, document map[string]any, credentials string, mod
 	document["secrets_file"] = secretPath
 
 	// Return the actual on-disk path so tests use the public load boundary.
-	path := filepath.Join(dir, "config.json")
+	path := filepath.Join(dir, "config.yaml")
 	writeDocument(t, path, document)
 	return path
 }
@@ -348,7 +436,7 @@ func writeFixture(t *testing.T, document map[string]any, credentials string, mod
 func writeDocument(t *testing.T, path string, document map[string]any) {
 	t.Helper()
 	// Marshal fixtures with the standard schema rather than string interpolation.
-	data, err := json.Marshal(document)
+	data, err := yaml.Marshal(document)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +453,7 @@ func readDocument(t *testing.T, path string) map[string]any {
 		t.Fatal(err)
 	}
 	var document map[string]any
-	if err := json.Unmarshal(data, &document); err != nil {
+	if err := yaml.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
 	return document

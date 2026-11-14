@@ -4,42 +4,38 @@
 
 ## Change recipients or add a SIM
 
-Edit `/etc/djisimbox/config.json`. Each SIM has an entry in `routes`; each recipient has an entry in that route's `recipients`. This example sends the first SIM's notifications to two people and the second SIM's to another person. Replace all IDs:
+Edit `/etc/djisimbox/config.yaml`. Each SIM has an entry in `routes`; each recipient has an entry in that route's `recipients`. This example sends the first SIM's notifications to two people and the second SIM's to another person. Replace all IDs. Comments start with `#`:
 
-```json
-{
-  "version": 1,
-  "routes": [
-    {
-      "iccid": "89000000000000000001",
-      "name": "Work SIM",
-      "recipients": [
-        {"bot": "default", "chat_id": "123456789"},
-        {"bot": "default", "chat_id": "234567890"}
-      ]
-    },
-    {
-      "iccid": "89000000000000000002",
-      "name": "Spare SIM",
-      "recipients": [
-        {"bot": "default", "chat_id": "345678901"}
-      ]
-    }
-  ]
-}
+```yaml
+version: 1
+routes:
+  - iccid: "89000000000000000001"
+    # name: Work SIM
+    recipients:
+      - bot: default
+        chat_id: "123456789"
+      - bot: default
+        chat_id: "234567890"
+  - iccid: "89000000000000000002"
+    name: Spare SIM
+    recipients:
+      - bot: default
+        chat_id: "345678901"
 ```
 
-Use each SIM's full ICCID, rather than its phone number or IMSI. Find additional SIMs with `sudo mmcli -L`, use `sudo mmcli -m MODEM_ID` to find the SIM path, then read the ICCID with `sudo mmcli -i SIM_ID`; the modem and SIM IDs may differ. Several SIMs online at once require several modems; this has not yet been tested on hardware. For a new recipient, [find their chat ID](#find-a-telegram-chat-id) first.
+Use each SIM's full ICCID, rather than its phone number or IMSI; routing matches only the ICCID. `name` is optional: without it, notifications show the phone number stored on the SIM, or `ICCID 尾号 1234` (the last four ICCID digits) if the SIM does not store it. A `name` must be 1-80 characters on one line. Find additional SIMs with `sudo mmcli -L`, use `sudo mmcli -m MODEM_ID` to find the SIM path, then read the ICCID with `sudo mmcli -i SIM_ID`; the modem and SIM IDs may differ. Several SIMs online at once require several modems; this has not yet been tested on hardware. For a new recipient, [find their chat ID](#find-a-telegram-chat-id) first.
 
-To use another bot, add an entry to `bots` in `/etc/djisimbox/secrets.json`, such as `"family": "full token for another bot"`, and change the relevant recipient's `bot` to `family`.
+To use another bot, add an entry to `bots` in `/etc/djisimbox/secrets.yaml`, such as `family: "full token for another bot"`, and change the relevant recipient's `bot` to `family`.
 
 Save and check the configuration, then restart if the check succeeds:
 
 ```sh
-sudoedit /etc/djisimbox/config.json /etc/djisimbox/secrets.json
+sudoedit /etc/djisimbox/config.yaml /etc/djisimbox/secrets.yaml
 sudo -u djisimbox /usr/local/bin/djisimbox check
 sudo systemctl restart djisimbox
 ```
+
+If the service refuses to start after an edit, the error names the file and line number. Unknown or misspelled fields, duplicate keys, and extra YAML documents are rejected. Changes take effect only after the restart; there is no hot reload.
 
 Send a test SMS to confirm the intended recipients receive it.
 
@@ -56,7 +52,9 @@ unset BOT_TOKEN
 
 Use `message.chat.id` from the recipient's message as a string in the configuration, such as `"123456789"`. For a group, add the bot and send `/start@YourBotUsername`. For a channel, make the bot an administrator with permission to post messages, publish a test message, and use `channel_post.chat.id`. Keep the minus sign in group and channel IDs.
 
-If `getUpdates` is empty, send another message and query again. If a Webhook or another program already uses the bot, reuse a known chat ID or create a new bot. Keep the existing Webhook enabled. Sending notifications does not require continuous polling; notifications go only to explicitly configured IDs.
+If `getUpdates` is empty, send another message and query again. It returns only recent updates that no program has confirmed yet (Telegram keeps them about 24 hours), so if the recipient chatted with the bot long ago, ask them to send any new message to the bot (no need to `/start` again) and query again. If a Webhook or another program already uses the bot, reuse a known chat ID or create a new bot. Keep the existing Webhook enabled.
+
+Without a bot, open the chat in Telegram Web (web.telegram.org): the number after `#` in the address bar is that chat's ID. For your own ID, open Saved Messages. Keep the minus sign for groups. Sending notifications does not require continuous polling; notifications go only to explicitly configured IDs.
 
 ## View status and logs
 
@@ -90,7 +88,7 @@ Get the new package using the [download and verification steps](install.md#1-dow
 sudo ./install.sh
 ```
 
-The installer preserves `/etc/djisimbox/config.json` and `/etc/djisimbox/secrets.json`, updates the program and service files, checks the setup, and restarts the service. Send a test SMS to confirm the upgrade.
+The installer preserves `/etc/djisimbox/config.yaml` and `/etc/djisimbox/secrets.yaml`, updates the program and service files, checks the setup, and restarts the service. Send a test SMS to confirm the upgrade.
 
 To stop the service and disable startup at boot:
 

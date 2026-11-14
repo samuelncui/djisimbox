@@ -34,9 +34,9 @@ SHA256SUMS
 
 - `djisimbox`、`install.sh`、`README.md`、`README.zh-CN.md`、项目 `LICENSE`。
 - `deploy/` 中的五个随项目维护的 systemd、polkit、networkd 文件。
-- `examples/config.json`、`examples/secrets.json`，只包含公开占位值。
+- `examples/config.yaml`、`examples/secrets.yaml`，只包含公开占位值。
 - `docs/install.md`、`operations.md` 及对应的 `*.zh-CN.md`。
-- `THIRD_PARTY_NOTICES`，包含构建所用 Go 运行时及内置依赖的许可证、PATENTS，以及 `go.mod` 固定的 godbus/dbus、x/sys 许可证。
+- `THIRD_PARTY_NOTICES`，包含构建所用 Go 运行时及内置依赖的许可证、PATENTS，以及 `go.mod` 固定的 godbus/dbus、x/sys 许可证，以及 go.yaml.in/yaml/v3（MIT 与 Apache-2.0）的 LICENSE 和 NOTICE。
 
 脚本逐个复制清单中的普通文件，新增文件需主动加入清单。运行配置、凭证、运行状态、`.git`、开发记录和研究文档不会因位于工作目录而自动入包。依赖许可证从 `go mod download` 后通过 `go mod verify` 的模块目录读取；新增、删除或本地替换依赖时，先审阅并更新许可证清单。压缩包元数据统一为固定时间、UID/GID 和文件权限；`djisimbox` 和 `install.sh` 保留执行权限。
 

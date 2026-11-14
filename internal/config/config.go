@@ -3,7 +3,6 @@ package config
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"go.yaml.in/yaml/v3"
 )
 
 const maxFileSize = 1 << 20
@@ -21,49 +22,51 @@ const maxFileSize = 1 << 20
 var (
 	botNamePattern  = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 	botTokenPattern = regexp.MustCompile(`^[0-9]+:[A-Za-z0-9_-]{20,128}$`)
+	yamlLinePattern = regexp.MustCompile(`line (\d+)`)
 )
 
 // Config is the validated, immutable configuration returned by Load.
 type Config struct {
-	Version     int               `json:"version"`
-	RuntimeDir  string            `json:"runtime_dir"`
-	SecretsFile string            `json:"secrets_file"`
-	MaxPending  int               `json:"max_pending"`
-	MaxBytes    int64             `json:"max_bytes"`
-	Routes      []Route           `json:"routes"`
-	Bots        map[string]string `json:"-"`
+	Version     int               `yaml:"version"`
+	RuntimeDir  string            `yaml:"runtime_dir"`
+	SecretsFile string            `yaml:"secrets_file"`
+	MaxPending  int               `yaml:"max_pending"`
+	MaxBytes    int64             `yaml:"max_bytes"`
+	Routes      []Route           `yaml:"routes"`
+	Bots        map[string]string `yaml:"-"`
 
 	routeIndexes map[string]int
 }
 
-// Route assigns a SIM to a display name and one or more Telegram recipients.
+// Route assigns a SIM to one or more Telegram recipients.
+// An empty Name lets notifications show the SIM's own number instead.
 type Route struct {
-	ICCID      string      `json:"iccid"`
-	Name       string      `json:"name"`
-	Recipients []Recipient `json:"recipients"`
+	ICCID      string      `yaml:"iccid"`
+	Name       string      `yaml:"name,omitempty"`
+	Recipients []Recipient `yaml:"recipients"`
 }
 
 // Recipient selects a named bot credential and a Telegram chat.
 type Recipient struct {
-	Bot    string `json:"bot"`
-	ChatID string `json:"chat_id"`
+	Bot    string `yaml:"bot"`
+	ChatID string `yaml:"chat_id"`
 }
 
 type secrets struct {
-	Bots map[string]string `json:"bots"`
+	Bots map[string]string `yaml:"bots"`
 }
 
-// Load reads strict JSON configuration and a separate private secrets file.
+// Load reads strict YAML configuration and a separate private secrets file.
 // Errors deliberately exclude input values because callers may log them.
 func Load(path string) (*Config, error) {
 	// Seed defaults before decoding so explicit zero limits remain invalid.
 	cfg := &Config{
 		RuntimeDir:  "/run/djisimbox",
-		SecretsFile: "/etc/djisimbox/secrets.json",
+		SecretsFile: "/etc/djisimbox/secrets.yaml",
 		MaxPending:  10000,
 		MaxBytes:    16777216,
 	}
-	if err := readJSON(path, "config", false, cfg); err != nil {
+	if err := readYAML(path, "config", false, cfg); err != nil {
 		return nil, fmt.Errorf("load configuration: %w", err)
 	}
 	if err := cfg.validate(); err != nil {
@@ -72,7 +75,7 @@ func Load(path string) (*Config, error) {
 
 	// Keep credentials in a private file and validate unused bot entries too.
 	var credentials secrets
-	if err := readJSON(cfg.SecretsFile, "secrets", true, &credentials); err != nil {
+	if err := readYAML(cfg.SecretsFile, "secrets", true, &credentials); err != nil {
 		return nil, fmt.Errorf("load credentials: %w", err)
 	}
 	for name, token := range credentials.Bots {
@@ -135,8 +138,8 @@ func (c *Config) validate() error {
 		if _, ok := c.routeIndexes[route.ICCID]; ok {
 			return fmt.Errorf("route %d has a duplicate ICCID", i+1)
 		}
-		if strings.TrimSpace(route.Name) == "" || utf8.RuneCountInString(route.Name) > 80 {
-			return fmt.Errorf("route %d name must contain 1 to 80 characters", i+1)
+		if route.Name != "" && (strings.TrimSpace(route.Name) == "" || utf8.RuneCountInString(route.Name) > 80) {
+			return fmt.Errorf("route %d name must be omitted or contain 1 to 80 characters", i+1)
 		}
 		if strings.ContainsFunc(route.Name, lineBreakOrControl) {
 			return fmt.Errorf("route %d name must be a single line without control characters", i+1)
@@ -173,7 +176,7 @@ func validateRecipients(recipients []Recipient) error {
 	return nil
 }
 
-func readJSON(path, kind string, private bool, target any) error {
+func readYAML(path, kind string, private bool, target any) error {
 	// Reject special files before opening, then verify the opened file itself.
 	info, err := os.Stat(path)
 	if err != nil {
@@ -201,7 +204,7 @@ func readJSON(path, kind string, private bool, target any) error {
 		return fmt.Errorf("%s file exceeds 1 MiB", kind)
 	}
 
-	// Bound reads even when a file grows after inspection and require an object.
+	// Bound reads even when a file grows after inspection.
 	data, err := io.ReadAll(io.LimitReader(file, maxFileSize+1))
 	if err != nil {
 		return fmt.Errorf("%s file could not be read", kind)
@@ -209,21 +212,46 @@ func readJSON(path, kind string, private bool, target any) error {
 	if len(data) > maxFileSize {
 		return fmt.Errorf("%s file exceeds 1 MiB", kind)
 	}
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 || data[0] != '{' || !utf8.Valid(data) {
-		return fmt.Errorf("%s file must contain a JSON object", kind)
+	if !utf8.Valid(data) {
+		return fmt.Errorf("%s file must be UTF-8 text", kind)
 	}
 
-	// Decode errors can contain credential values or keys, so keep errors static.
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("%s file contains invalid or unknown JSON fields", kind)
+	// Require exactly one top-level mapping; null, scalar and list documents are not empty settings.
+	documents := yaml.NewDecoder(bytes.NewReader(data))
+	var document yaml.Node
+	if err := documents.Decode(&document); err != nil {
+		if errors.Is(err, io.EOF) {
+			return fmt.Errorf("%s file must contain a YAML mapping", kind)
+		}
+		return yamlError(kind, err)
 	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		return fmt.Errorf("%s file contains trailing JSON data", kind)
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return fmt.Errorf("%s file must contain a YAML mapping", kind)
+	}
+	err = documents.Decode(new(yaml.Node))
+	if err == nil {
+		return fmt.Errorf("%s file must contain one YAML document", kind)
+	}
+	if !errors.Is(err, io.EOF) {
+		return yamlError(kind, err)
+	}
+
+	// Reject misspelled or removed fields rather than silently ignoring them.
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(target); err != nil {
+		return yamlError(kind, err)
 	}
 	return nil
+}
+
+// yamlError keeps the reported line number but drops decoder text, which can quote keys or credential values.
+func yamlError(kind string, err error) error {
+	match := yamlLinePattern.FindStringSubmatch(err.Error())
+	if match == nil {
+		return fmt.Errorf("%s file contains invalid or unknown YAML fields", kind)
+	}
+	return fmt.Errorf("%s file contains invalid or unknown YAML fields at line %s", kind, match[1])
 }
 
 func digits(value string) bool {

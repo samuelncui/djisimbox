@@ -15,6 +15,21 @@ ICCID = "89000000000000000001"
 OTHER_ICCID = "89000000000000000002"
 
 
+def expected_config(iccid, chat):
+    return f"""# DJI SIM Box configuration. After editing, run: sudo systemctl restart djisimbox
+version: 1
+
+# One entry per SIM, matched by ICCID (the SIM card number, not the phone number).
+routes:
+  - iccid: "{iccid}"
+    # Optional label; when omitted, notifications show the SIM's own phone number.
+    # name: My SIM
+    recipients:
+      - bot: default
+        chat_id: "{chat}"
+"""
+
+
 class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="djisimbox-install-test-")
@@ -122,17 +137,12 @@ curl() {
         return self.bash(commands, input)
 
     def test_first_setup_binds_only_selected_sim_and_explicit_recipient(self):
-        name = 'Work "SIM" \\ backup'
-        result = self.configure(f"\n2\n{name}\n{TOKEN}\n\n234567890\n")
+        result = self.configure(f"\n2\n{TOKEN}\n\n234567890\n")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads((self.config / "config.json").read_text()), {
-            "version": 1, "routes": [{"iccid": OTHER_ICCID, "name": name,
-                "recipients": [{"bot": "default", "chat_id": "234567890"}]}],
-        })
-        self.assertEqual(json.loads((self.config / "secrets.json").read_text()), {
-            "bots": {"default": TOKEN},
-        })
-        for name in ("config.json", "secrets.json"):
+        self.assertEqual((self.config / "config.yaml").read_text(), expected_config(OTHER_ICCID, "234567890"))
+        self.assertEqual((self.config / "secrets.yaml").read_text(),
+                         f'# Telegram bot tokens by name. Keep this file private.\nbots:\n  default: "{TOKEN}"\n')
+        for name in ("config.yaml", "secrets.yaml"):
             self.assertEqual(stat.S_IMODE((self.config / name).stat().st_mode), 0o600)
         self.assertNotIn(TOKEN, result.stdout + result.stderr)
         self.assertNotIn(TOKEN, (self.fixture / "argv").read_text())
@@ -140,53 +150,49 @@ curl() {
         self.assertIn("/getUpdates", (self.fixture / "request").read_text())
 
     def test_webhook_conflict_allows_known_group_id(self):
-        result = self.configure(f"\n1\n\n{TOKEN}\n\n-1001234567890\n", curl_failure=True)
+        result = self.configure(f"\n1\n{TOKEN}\n\n-1001234567890\n", curl_failure=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        config = json.loads((self.config / "config.json").read_text())
-        self.assertEqual(config["routes"][0]["recipients"], [
-            {"bot": "default", "chat_id": "-1001234567890"},
-        ])
+        self.assertEqual((self.config / "config.yaml").read_text(), expected_config(ICCID, "-1001234567890"))
         self.assertNotIn("deleteWebhook", (self.fixture / "request").read_text())
 
     def test_rerun_preserves_config_without_querying_telegram_or_modem(self):
-        config = '{"version":1,"routes":[]}\n'
-        secrets = json.dumps({"bots": {"default": TOKEN}})
-        (self.config / "config.json").write_text(config)
-        (self.config / "secrets.json").write_text(secrets)
+        config = "version: 1\nroutes: []\n"
+        secrets = f"bots:\n  default: {TOKEN}\n"
+        (self.config / "config.yaml").write_text(config)
+        (self.config / "secrets.yaml").write_text(secrets)
         result = self.bash('''
 discover_sims() { exit 90; }
 curl() { exit 91; }
 configure "$FIXTURE/config"
 ''')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.config / "config.json").read_text(), config)
-        self.assertEqual((self.config / "secrets.json").read_text(), secrets)
+        self.assertEqual((self.config / "config.yaml").read_text(), config)
+        self.assertEqual((self.config / "secrets.yaml").read_text(), secrets)
 
     def test_partial_configuration_is_preserved(self):
-        (self.config / "config.json").write_text("existing configuration")
+        (self.config / "config.yaml").write_text("existing configuration")
         result = self.bash('configure "$FIXTURE/config"\n')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual((self.config / "config.json").read_text(), "existing configuration")
-        self.assertFalse((self.config / "secrets.json").exists())
+        self.assertEqual((self.config / "config.yaml").read_text(), "existing configuration")
+        self.assertFalse((self.config / "secrets.yaml").exists())
 
     def test_invalid_token_never_reaches_telegram_or_creates_config(self):
-        result = self.configure('\n1\n\nnot-a-token\n')
+        result = self.configure('\n1\nnot-a-token\n')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Invalid bot token format", result.stderr)
         self.assertFalse((self.fixture / "request").exists())
-        self.assertFalse((self.config / "config.json").exists())
+        self.assertFalse((self.config / "config.yaml").exists())
 
     def test_invalid_setup_input_does_not_leave_configuration_behind(self):
-        for name, chat in [("SIM\x01", "123456789"), ("\u2000", "123456789"), ("名" * 81, "123456789"),
-                           ("SIM\u2028name", "123456789"), ("SIM\u2029name", "123456789"),
-                           ("SIM 1", "9223372036854775808"), ("SIM 1", "-9223372036854775809")]:
-            with self.subTest(name=name, chat=chat):
+        for selection, chat in [("3", "123456789"), ("1", "0"), ("1", "@alice"),
+                                ("1", "9223372036854775808"), ("1", "-9223372036854775809")]:
+            with self.subTest(selection=selection, chat=chat):
                 for path in self.config.iterdir():
                     path.unlink()
-                result = self.configure(f"\n1\n{name}\n{TOKEN}\n\n{chat}\n")
+                result = self.configure(f"\n{selection}\n{TOKEN}\n\n{chat}\n")
                 self.assertNotEqual(result.returncode, 0)
-                self.assertFalse((self.config / "config.json").exists())
-                self.assertFalse((self.config / "secrets.json").exists())
+                self.assertFalse((self.config / "config.yaml").exists())
+                self.assertFalse((self.config / "secrets.yaml").exists())
 
     def test_chat_id_boundaries_are_validated_without_numeric_rounding(self):
         for value, expected in [("1", 0), ("-1", 0), ("9223372036854775807", 0),
@@ -195,14 +201,6 @@ configure "$FIXTURE/config"
             with self.subTest(value=value):
                 result = self.bash(f'valid_chat_id {value}\n')
                 self.assertEqual(result.returncode, expected)
-
-    def test_eighty_character_unicode_name_is_accepted(self):
-        name = "名" * 80
-        result = self.configure(f"\n1\n{name}\n{TOKEN}\n\n9223372036854775807\n")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        route = json.loads((self.config / "config.json").read_text())["routes"][0]
-        self.assertEqual(route["name"], name)
-        self.assertEqual(route["recipients"][0]["chat_id"], "9223372036854775807")
 
     def test_help_has_no_installation_side_effects(self):
         result = subprocess.run([str(INSTALLER), "--help"], text=True, capture_output=True, timeout=5)

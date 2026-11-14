@@ -25,8 +25,8 @@ SOURCE_FILES = (
     "deploy/systemd/djisimbox.service",
     "deploy/systemd/journald@djisimbox.conf",
     "deploy/systemd/journald-djisimbox-volatile.conf",
-    "examples/config.json",
-    "examples/secrets.json",
+    "examples/config.yaml",
+    "examples/secrets.yaml",
     "docs/install.md",
     "docs/install.zh-CN.md",
     "docs/operations.md",
@@ -34,6 +34,7 @@ SOURCE_FILES = (
 )
 MODULE_LICENSES = {
     "github.com/godbus/dbus/v5": ("LICENSE",),
+    "go.yaml.in/yaml/v3": ("LICENSE", "NOTICE"),
     "golang.org/x/sys": ("LICENSE", "PATENTS"),
 }
 # SemVer 2.0.0, with v as the release tag prefix. Numeric prerelease fields

@@ -16,7 +16,7 @@ flowchart LR
 | 组件 | 职责 |
 | --- | --- |
 | `internal/modem` | 发现 modem/SIM，接收完整短信和被动来电事件，确认短信原件释放；ModemManager 负责协议与多段短信组装。 |
-| `internal/config` | 严格 JSON、私有凭据和 ICCID 到收件人的显式映射。 |
+| `internal/config` | 严格 YAML（拒绝未知字段、重复键和多余文档）、私有凭据和 ICCID 到收件人的显式映射。 |
 | `internal/queue` | 来源身份、首次分配的收件人、有序分段、容量、重试和完成状态，全部保存在内存。 |
 | `internal/telegram` | 纯文本格式、Unicode 安全分段、有界 HTTPS 请求和脱敏错误分类。 |
 | `internal/app` | 协调接收与独立投递循环，网络等待不阻塞接收。 |

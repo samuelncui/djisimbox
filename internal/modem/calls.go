@@ -134,8 +134,11 @@ func incomingCall(boot string, device Device, path dbus.ObjectPath,
 	if state != callRingingIn && state != callWaiting {
 		return Message{}, false
 	}
+
+	// Carry the SIM identity from the device snapshot; an absent caller number stays absent.
 	message := Message{Kind: IncomingCall, SourceKey: sourceKey(boot, device, path), SIMID: device.SIMID,
-		Path: path, Modem: device.Path, owner: device.owner, Timestamp: observed.Format(time.RFC3339)}
+		OwnNumber: device.OwnNumber, Path: path, Modem: device.Path, owner: device.owner,
+		Timestamp: observed.Format(time.RFC3339)}
 	if number, ok := values["Number"]; ok {
 		_ = number.Store(&message.Sender)
 	}

@@ -82,21 +82,33 @@ func (w *worker) accept(ctx context.Context, message modem.Message) error {
 	var recipients []queue.Recipient
 	var parts []string
 	if known {
+		// Copy the route's recipients into queue-owned delivery targets.
 		recipients = make([]queue.Recipient, 0, len(route.Recipients))
 		for _, recipient := range route.Recipients {
 			recipients = append(recipients, queue.Recipient{Bot: recipient.Bot, ChatID: recipient.ChatID})
 		}
+
+		// Label with the configured name, else the SIM's own number, else the routed ICCID's last digits.
+		label := route.Name
+		if label == "" {
+			label = message.OwnNumber
+		}
+		if label == "" {
+			label = "ICCID 尾号 " + simSuffix(message.SIMID)
+		}
 		switch message.Kind {
 		case modem.SMS:
-			parts = telegram.Format(telegram.Message{Label: route.Name, Sender: message.Sender,
+			parts = telegram.Format(telegram.Message{Label: label, Sender: message.Sender,
 				Timestamp: message.Timestamp, Text: message.Text})
 		case modem.IncomingCall:
-			parts = []string{telegram.FormatCall(telegram.Call{Label: route.Name, Number: message.Sender,
+			parts = []string{telegram.FormatCall(telegram.Call{Label: label, Number: message.Sender,
 				ObservedAt: message.Timestamp})}
 		default:
 			return errors.New("unsupported notification kind")
 		}
 	}
+
+	// Retain the notification in RAM; an unknown SIM stays quarantined until a restart adds its route.
 	id, created, err := w.queue.Accept(queue.Message{SourceKey: message.SourceKey, SIMID: message.SIMID,
 		Sender: message.Sender, Text: message.Text, Timestamp: message.Timestamp}, recipients, parts)
 	if err != nil {
@@ -111,7 +123,7 @@ func (w *worker) accept(ctx context.Context, message modem.Message) error {
 
 	// Acknowledge sources only after every recipient confirms delivery; call acknowledgment is local RAM only.
 	if created {
-		w.log.Info("notification queued in memory", "message_id", id, "sim", route.Name,
+		w.log.Info("notification queued in memory", "message_id", id, "sim_suffix", simSuffix(message.SIMID),
 			"kind", message.Kind, "destinations", len(recipients))
 	}
 	select {
@@ -241,4 +253,9 @@ func canonicalChat(value string) string {
 		return value
 	}
 	return strconv.FormatInt(id, 10)
+}
+
+// simSuffix returns a routed ICCID's last four digits, which identify a SIM without exposing it.
+func simSuffix(iccid string) string {
+	return iccid[len(iccid)-4:]
 }

@@ -2,6 +2,9 @@ module github.com/samuelncui/djisimbox
 
 go 1.26.0
 
-require github.com/godbus/dbus/v5 v5.2.4
+require (
+	github.com/godbus/dbus/v5 v5.2.4
+	go.yaml.in/yaml/v3 v3.0.6
+)
 
 require golang.org/x/sys v0.49.0 // indirect

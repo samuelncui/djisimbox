@@ -48,6 +48,7 @@ type Message struct {
 	Kind      Kind
 	SourceKey string
 	SIMID     string
+	OwnNumber string
 	Sender    string
 	Text      string
 	Timestamp string
@@ -61,7 +62,7 @@ func (m Message) belongsTo(device Device) bool {
 	return m.owner == device.owner && m.Modem == device.Path && m.SIMID == device.SIMID
 }
 
-// Device describes a discovered modem without exposing its full SIM identifier in JSON.
+// Device describes a discovered modem without exposing its full SIM identifier or number in JSON.
 type Device struct {
 	Path       dbus.ObjectPath `json:"path"`
 	Model      string          `json:"model"`
@@ -70,6 +71,7 @@ type Device struct {
 	Interfaces []string        `json:"network_interfaces"`
 	Voice      bool            `json:"voice"`
 	SIMID      string          `json:"-"`
+	OwnNumber  string          `json:"-"`
 	owner      string
 }
 
@@ -143,6 +145,16 @@ func (c *Client) Devices(ctx context.Context) ([]Device, error) {
 		}
 		if value, ok := props["State"]; ok {
 			_ = value.Store(&d.State)
+		}
+		var numbers []string
+		if value, ok := props["OwnNumbers"]; ok {
+			_ = value.Store(&numbers)
+		}
+		for _, number := range numbers {
+			if number = strings.TrimSpace(number); number != "" {
+				d.OwnNumber = number
+				break
+			}
 		}
 		var ports []struct {
 			Name string
@@ -409,7 +421,8 @@ func incoming(boot string, device Device, path dbus.ObjectPath, values map[strin
 	}
 
 	// Object identity deduplicates only within the owner lifetime, never by SMS text or time.
-	message := Message{SIMID: device.SIMID, Text: text, Path: path, Modem: device.Path, owner: device.owner}
+	message := Message{SIMID: device.SIMID, OwnNumber: device.OwnNumber, Text: text, Path: path, Modem: device.Path,
+		owner: device.owner}
 	if value, ok := values["Number"]; ok {
 		_ = value.Store(&message.Sender)
 	}

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -15,6 +14,7 @@ import (
 	"github.com/samuelncui/djisimbox/internal/modem"
 	"github.com/samuelncui/djisimbox/internal/queue"
 	"github.com/samuelncui/djisimbox/internal/telegram"
+	"go.yaml.in/yaml/v3"
 )
 
 const testSIM = "8901000000000000001"
@@ -50,19 +50,24 @@ func (s testSender) Send(context.Context, string, string) (int64, error) { retur
 
 func fixture(t *testing.T, maxPending int) (*worker, *testInbox) {
 	t.Helper()
+	return routeFixture(t, maxPending, "测试 SIM")
+}
+
+func routeFixture(t *testing.T, maxPending int, name string) (*worker, *testInbox) {
+	t.Helper()
 	// Create private, synthetic configuration through the same parser as production.
 	dir := t.TempDir()
-	secrets := filepath.Join(dir, "secrets.json")
+	secrets := filepath.Join(dir, "secrets.yaml")
 	if err := os.WriteFile(secrets, []byte(`{"bots":{"default":"123456789:FAKE_TEST_TOKEN_12345678901234567890"}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	contents, err := json.Marshal(config.Config{Version: 1, RuntimeDir: dir,
+	contents, err := yaml.Marshal(config.Config{Version: 1, RuntimeDir: dir,
 		SecretsFile: secrets, MaxPending: maxPending, MaxBytes: 16777216,
-		Routes: []config.Route{{ICCID: testSIM, Name: "测试 SIM", Recipients: []config.Recipient{{Bot: "default", ChatID: "123"}}}}})
+		Routes: []config.Route{{ICCID: testSIM, Name: name, Recipients: []config.Recipient{{Bot: "default", ChatID: "123"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, "config.json")
+	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, contents, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +126,30 @@ func TestSourceStaysUntilAllAcknowledgmentsAndReleaseCanRetry(t *testing.T) {
 	stats = w.queue.Stats()
 	if inbox.deletes != 2 || stats.Messages != 0 || stats.Forwarded != 1 || stats.Bytes != 0 {
 		t.Fatalf("source cleanup failed: deletes=%d stats=%+v", inbox.deletes, stats)
+	}
+}
+
+func TestUnnamedRouteLabelsWithOwnNumberOrICCIDSuffix(t *testing.T) {
+	// An unnamed route shows the SIM's own number, and only the ICCID suffix when the number is unknown.
+	cases := []struct {
+		name, ownNumber, want string
+	}{
+		{"own number", "+8613261231131", "短信通知\nSIM: +8613261231131\n号码: +1234\n\nhello"},
+		{"unknown number", "", "短信通知\nSIM: ICCID 尾号 0001\n号码: +1234\n\nhello"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w, _ := routeFixture(t, 10, "")
+			message := modem.Message{SourceKey: "source", SIMID: testSIM, OwnNumber: tc.ownNumber, Sender: "+1234",
+				Text: "hello"}
+			if err := w.accept(context.Background(), message); err != nil {
+				t.Fatal(err)
+			}
+			ready := w.queue.Due(time.Now(), 1, nil)
+			if len(ready) != 1 || ready[0].Text != tc.want {
+				t.Fatalf("unexpected notification: %+v", ready)
+			}
+		})
 	}
 }
 

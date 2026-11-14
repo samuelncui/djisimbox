@@ -38,7 +38,7 @@ func (m *fakeManager) GetManagedObjects() (map[dbus.ObjectPath]map[string]map[st
 	objects := map[dbus.ObjectPath]map[string]map[string]dbus.Variant{
 		root + "/Modem/0": {modemIF: {
 			"State": dbus.MakeVariant(int32(8)), "Model": dbus.MakeVariant("Synthetic modem"),
-			"Sim": dbus.MakeVariant(root + "/SIM/0"),
+			"Sim": dbus.MakeVariant(root + "/SIM/0"), "OwnNumbers": dbus.MakeVariant([]string{" ", "+8613261231131"}),
 		}},
 	}
 	if m.voice.Load() {
@@ -176,7 +176,7 @@ func TestDBusReceptionAndDaemonReplacement(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("complete SMS notification missing")
 	}
-	if original.Text != "你好 🌍" || original.SIMID != "8901000000000000001" {
+	if original.Text != "你好 🌍" || original.SIMID != "8901000000000000001" || original.OwnNumber != "+8613261231131" {
 		t.Fatal("wire properties or SIM ownership changed")
 	}
 

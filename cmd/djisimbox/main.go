@@ -32,7 +32,7 @@ func main() {
 func execute(args []string, logger *slog.Logger) error {
 	// Parse one explicit operation rather than starting a daemon on an accidental invocation.
 	if len(args) == 0 {
-		return errors.New("usage: djisimbox {run|check|status|version} [-config /etc/djisimbox/config.json]")
+		return errors.New("usage: djisimbox {run|check|status|version} [-config /etc/djisimbox/config.yaml]")
 	}
 	command := args[0]
 	if command == "version" {
@@ -43,7 +43,7 @@ func execute(args []string, logger *slog.Logger) error {
 		return errors.New("unknown command; choose run, check, status, or version")
 	}
 	flags := flag.NewFlagSet("djisimbox "+command, flag.ContinueOnError)
-	path := flags.String("config", "/etc/djisimbox/config.json", "configuration file")
+	path := flags.String("config", "/etc/djisimbox/config.yaml", "configuration file")
 	if err := flags.Parse(args[1:]); err != nil {
 		return fmt.Errorf("parse command options: %w", err)
 	}

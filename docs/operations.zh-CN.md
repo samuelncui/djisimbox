@@ -4,42 +4,38 @@
 
 ## 修改收件人或增加 SIM
 
-编辑 `/etc/djisimbox/config.json`。每张 SIM 在 `routes` 中占一项；每位收件人在该项的 `recipients` 中占一项。下面示例把第一张卡发给两人，第二张卡发给另一人，所有编号都需替换：
+编辑 `/etc/djisimbox/config.yaml`。每张 SIM 在 `routes` 中占一项；每位收件人在该项的 `recipients` 中占一项。下面示例把第一张卡发给两人，第二张卡发给另一人，所有编号都需替换。注释以 `#` 开头：
 
-```json
-{
-  "version": 1,
-  "routes": [
-    {
-      "iccid": "89000000000000000001",
-      "name": "工作卡",
-      "recipients": [
-        {"bot": "default", "chat_id": "123456789"},
-        {"bot": "default", "chat_id": "234567890"}
-      ]
-    },
-    {
-      "iccid": "89000000000000000002",
-      "name": "备用卡",
-      "recipients": [
-        {"bot": "default", "chat_id": "345678901"}
-      ]
-    }
-  ]
-}
+```yaml
+version: 1
+routes:
+  - iccid: "89000000000000000001"
+    # name: 工作卡
+    recipients:
+      - bot: default
+        chat_id: "123456789"
+      - bot: default
+        chat_id: "234567890"
+  - iccid: "89000000000000000002"
+    name: 备用卡
+    recipients:
+      - bot: default
+        chat_id: "345678901"
 ```
 
-使用 SIM 的完整 ICCID，不要填电话号码或 IMSI。增加 SIM 时，用 `sudo mmcli -L` 找到模块，再用 `sudo mmcli -m MODEM_ID` 找到 SIM 路径，最后用 `sudo mmcli -i SIM_ID` 读取 ICCID；模块和 SIM 的编号可能不同。多张卡同时在线需要多个模块，目前尚未完成实机验证。新增收件人前，先[取得聊天编号](#取得-telegram-聊天编号)。
+使用 SIM 的完整 ICCID，不要填电话号码或 IMSI；路由只按 ICCID 匹配。`name` 可省略：省略时通知显示 SIM 内存储的本机号码；SIM 未存号码时显示 `ICCID 尾号 1234`（ICCID 末四位）。填写 `name` 时须为单行 1–80 个字符。增加 SIM 时，用 `sudo mmcli -L` 找到模块，再用 `sudo mmcli -m MODEM_ID` 找到 SIM 路径，最后用 `sudo mmcli -i SIM_ID` 读取 ICCID；模块和 SIM 的编号可能不同。多张卡同时在线需要多个模块，目前尚未完成实机验证。新增收件人前，先[取得聊天编号](#取得-telegram-聊天编号)。
 
-需要不同 bot 时，在 `/etc/djisimbox/secrets.json` 的 `bots` 中增加一项，例如 `"family": "另一个 bot 的完整 token"`，并把相应收件人的 `bot` 改为 `family`。
+需要不同 bot 时，在 `/etc/djisimbox/secrets.yaml` 的 `bots` 中增加一项，例如 `family: "另一个 bot 的完整 token"`，并把相应收件人的 `bot` 改为 `family`。
 
 保存并检查，成功后重启生效：
 
 ```sh
-sudoedit /etc/djisimbox/config.json /etc/djisimbox/secrets.json
+sudoedit /etc/djisimbox/config.yaml /etc/djisimbox/secrets.yaml
 sudo -u djisimbox /usr/local/bin/djisimbox check
 sudo systemctl restart djisimbox
 ```
+
+修改后服务无法启动时，错误信息会指出文件名和行号。未知或拼错的字段、重复的键、多余的 YAML 文档都会被拒绝。修改只在重启后生效，没有热加载。
 
 发送测试短信，确认指定收件人能收到。
 
@@ -56,7 +52,9 @@ unset BOT_TOKEN
 
 从收件人消息中取 `message.chat.id`，在配置中写成字符串，如 `"123456789"`。群组中先加入 bot 并发 `/start@你的Bot用户名`；频道中将 bot 设为有发消息权限的管理员，发布测试消息，再取 `channel_post.chat.id`。群组和频道编号的负号要保留。
 
-`getUpdates` 为空时，再发一条消息后查询。已有 Webhook 或其他程序使用该 bot 时，沿用已知聊天编号，或新建 bot；保留现有 Webhook。发送通知不需要持续查询更新，通知只发给明确配置的编号。
+`getUpdates` 为空时，再发一条消息后查询。它只返回尚未被任何程序确认的近期更新（Telegram 约保留 24 小时），所以收件人很久以前才和 bot 聊过时，请对方给 bot 随便发一条新消息（无需再发 `/start`），然后重新查询。已有 Webhook 或其他程序使用该 bot 时，沿用已知聊天编号，或新建 bot；保留现有 Webhook。
+
+不使用 bot 时，可在 Telegram 网页版（web.telegram.org）打开该聊天，地址栏 `#` 后的数字就是聊天编号；自己的编号请打开“已保存的消息”。群组的负号要保留。发送通知不需要持续查询更新，通知只发给明确配置的编号。
 
 ## 查看状态和日志
 
@@ -90,7 +88,7 @@ sudo journalctl --namespace=djisimbox -u djisimbox --no-pager -n 30
 sudo ./install.sh
 ```
 
-安装器会保留 `/etc/djisimbox/config.json` 和 `/etc/djisimbox/secrets.json`，更新程序和服务文件，检查后重启服务。最后发送测试短信确认升级成功。
+安装器会保留 `/etc/djisimbox/config.yaml` 和 `/etc/djisimbox/secrets.yaml`，更新程序和服务文件，检查后重启服务。最后发送测试短信确认升级成功。
 
 停止服务并取消开机启动：
 

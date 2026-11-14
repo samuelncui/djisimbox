@@ -2,12 +2,15 @@
 /dist/
 /.local/
 /config.json
+/config.yaml
 *.db
 *.db-shm
 *.db-wal
 config.local.json
+config.local.yaml
 secrets.json
-!examples/secrets.json
+secrets.yaml
+!examples/secrets.yaml
 *.env
 .env.*
 *.log
