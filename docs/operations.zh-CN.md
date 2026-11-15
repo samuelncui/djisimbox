@@ -81,6 +81,8 @@ sudo journalctl --namespace=djisimbox -u djisimbox --no-pager -n 30
 
 断网后会重试，短信在所有收件人收到后才从模块删除；长期断网可能用满模块存储。重启可能重复转发尚未删除的短信，也可能丢失待发来电提醒；停机期间的来电也可能漏报。
 
+长短信分成几段到达。如果有分段一直没到，这条短信就拼不起来，也无法转发；超过 24 小时后会从模块删除，腾出存储。
+
 换 SIM 前先等 `queue.Messages` 变为 `0`，再用 `sudo mmcli -m MODEM_ID --messaging-list-sms` 确认模块没有旧短信；有旧短信时先处理，避免发给新卡的收件人。
 
 ## 升级或停用

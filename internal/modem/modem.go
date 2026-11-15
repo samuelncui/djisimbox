@@ -27,6 +27,7 @@ const (
 	propertiesIF  = "org.freedesktop.DBus.Properties"
 	objectsIF     = "org.freedesktop.DBus.ObjectManager"
 	stateDisabled = int32(3)
+	smsReceiving  = uint32(2)
 	smsReceived   = uint32(3)
 	pduDeliver    = uint32(1)
 	maxTextBytes  = 256 * 1024

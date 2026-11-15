@@ -32,6 +32,8 @@ type fakeManager struct {
 	deletes atomic.Int64
 	read    chan struct{}
 	voice   atomic.Bool
+	// stamp holds the SMS timestamp string; empty leaves the property absent.
+	stamp atomic.Value
 }
 
 func (m *fakeManager) GetManagedObjects() (map[dbus.ObjectPath]map[string]map[string]dbus.Variant, *dbus.Error) {
@@ -85,6 +87,9 @@ func fakeService(t *testing.T, address string, state uint32) *fakeManager {
 			// Notify the test only after taking this message state's immutable snapshot.
 			values := map[string]dbus.Variant{"State": dbus.MakeVariant(m.state.Load()),
 				"PduType": dbus.MakeVariant(pduDeliver), "Text": dbus.MakeVariant("你好 🌍")}
+			if stamp, _ := m.stamp.Load().(string); stamp != "" {
+				values["Timestamp"] = dbus.MakeVariant(stamp)
+			}
 			select {
 			case m.read <- struct{}{}:
 			default:

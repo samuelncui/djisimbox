@@ -81,6 +81,8 @@ After successful delivery, `queue.Messages` should return to `0`. Check status a
 
 Delivery is retried after a network outage. SMS messages are deleted from the modem only after all recipients receive them; modem storage may fill up during a long outage. A restart may resend messages that have not yet been deleted and lose pending call alerts; calls during downtime may also be missed.
 
+A long SMS arrives in several parts. If some parts never arrive, it cannot be put together or forwarded; after 24 hours it is deleted from the modem to free its storage.
+
 Before changing a SIM, wait for `queue.Messages` to reach `0`, then use `sudo mmcli -m MODEM_ID --messaging-list-sms` to confirm the modem has no old SMS messages. Deal with any old messages first so they are not sent to the new SIM's recipients.
 
 ## Upgrade or stop
