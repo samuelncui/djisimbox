@@ -25,9 +25,16 @@ var (
 	yamlLinePattern = regexp.MustCompile(`line (\d+)`)
 )
 
+// Supported languages for notifications and setup prompts.
+const (
+	LanguageChinese = "zh-CN"
+	LanguageEnglish = "en"
+)
+
 // Config is the validated, immutable configuration returned by Load.
 type Config struct {
 	Version     int               `yaml:"version"`
+	Language    string            `yaml:"language,omitempty"`
 	RuntimeDir  string            `yaml:"runtime_dir"`
 	SecretsFile string            `yaml:"secrets_file"`
 	MaxPending  int               `yaml:"max_pending"`
@@ -59,44 +66,87 @@ type secrets struct {
 // Load reads strict YAML configuration and a separate private secrets file.
 // Errors deliberately exclude input values because callers may log them.
 func Load(path string) (*Config, error) {
+	// Read the routing document first; it names the private secrets file.
+	document, err := readFile(path, "config", false)
+	if err != nil {
+		return nil, fmt.Errorf("load configuration: %w", err)
+	}
+	cfg, err := parseDocument(document)
+	if err != nil {
+		return nil, err
+	}
+
+	// Keep credentials in a private file and validate unused bot entries too.
+	credentials, err := readFile(cfg.SecretsFile, "secrets", true)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	if err := cfg.attachSecrets(credentials); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Parse validates configuration and secrets documents held in memory, such as files about to be written.
+func Parse(document, credentials []byte) (*Config, error) {
+	cfg, err := parseDocument(document)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.attachSecrets(credentials); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func parseDocument(document []byte) (*Config, error) {
 	// Seed defaults before decoding so explicit zero limits remain invalid.
 	cfg := &Config{
+		Language:    LanguageChinese,
 		RuntimeDir:  "/run/djisimbox",
 		SecretsFile: "/etc/djisimbox/secrets.yaml",
 		MaxPending:  10000,
 		MaxBytes:    16777216,
 	}
-	if err := readYAML(path, "config", false, cfg); err != nil {
+	if err := decodeYAML(document, "config", cfg); err != nil {
 		return nil, fmt.Errorf("load configuration: %w", err)
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("validate configuration: %w", err)
 	}
+	return cfg, nil
+}
 
-	// Keep credentials in a private file and validate unused bot entries too.
-	var credentials secrets
-	if err := readYAML(cfg.SecretsFile, "secrets", true, &credentials); err != nil {
-		return nil, fmt.Errorf("load credentials: %w", err)
+func (c *Config) attachSecrets(credentials []byte) error {
+	// Validate every named bot, including ones no route uses yet.
+	var parsed secrets
+	if err := decodeYAML(credentials, "secrets", &parsed); err != nil {
+		return fmt.Errorf("load credentials: %w", err)
 	}
-	for name, token := range credentials.Bots {
+	for name, token := range parsed.Bots {
 		if !botNamePattern.MatchString(name) {
-			return nil, errors.New("credentials contain an invalid bot name")
+			return errors.New("credentials contain an invalid bot name")
 		}
 		if !botTokenPattern.MatchString(token) {
-			return nil, errors.New("credentials contain an invalid bot token")
+			return errors.New("credentials contain an invalid bot token")
 		}
 	}
-	cfg.Bots = credentials.Bots
+	c.Bots = parsed.Bots
 
 	// Reject missing credentials before processing any SMS for a configured SIM.
-	for i, route := range cfg.Routes {
+	for i, route := range c.Routes {
 		for j, recipient := range route.Recipients {
-			if _, ok := cfg.Bots[recipient.Bot]; !ok {
-				return nil, fmt.Errorf("route %d recipient %d references a missing bot", i+1, j+1)
+			if _, ok := c.Bots[recipient.Bot]; !ok {
+				return fmt.Errorf("route %d recipient %d references a missing bot", i+1, j+1)
 			}
 		}
 	}
-	return cfg, nil
+	return nil
+}
+
+// ValidBotToken reports whether token has the format accepted in the secrets file.
+func ValidBotToken(token string) bool {
+	return botTokenPattern.MatchString(token)
 }
 
 // Route looks up a configured SIM in constant time. An unknown SIM has no route.
@@ -112,6 +162,9 @@ func (c *Config) validate() error {
 	// Validate process-wide limits before building any routing state.
 	if c.Version != 1 {
 		return errors.New("version must be 1")
+	}
+	if c.Language != LanguageChinese && c.Language != LanguageEnglish {
+		return errors.New("language must be zh-CN or en")
 	}
 	if !filepath.IsAbs(c.RuntimeDir) || filepath.Clean(c.RuntimeDir) != c.RuntimeDir {
 		return errors.New("runtime_dir must be an absolute clean path")
@@ -176,39 +229,47 @@ func validateRecipients(recipients []Recipient) error {
 	return nil
 }
 
-func readYAML(path, kind string, private bool, target any) error {
+func readFile(path, kind string, private bool) ([]byte, error) {
 	// Reject special files before opening, then verify the opened file itself.
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("%s file is unavailable", kind)
+		return nil, fmt.Errorf("%s file is unavailable", kind)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%s file must be regular", kind)
+		return nil, fmt.Errorf("%s file must be regular", kind)
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("%s file could not be opened", kind)
+		return nil, fmt.Errorf("%s file could not be opened", kind)
 	}
 	defer file.Close()
 	info, err = file.Stat()
 	if err != nil {
-		return fmt.Errorf("%s file could not be inspected", kind)
+		return nil, fmt.Errorf("%s file could not be inspected", kind)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%s file must be regular", kind)
+		return nil, fmt.Errorf("%s file must be regular", kind)
 	}
 	if private && info.Mode().Perm()&0077 != 0 {
-		return errors.New("secrets file must have no group or other permissions")
+		return nil, errors.New("secrets file must have no group or other permissions")
 	}
 	if info.Size() > maxFileSize {
-		return fmt.Errorf("%s file exceeds 1 MiB", kind)
+		return nil, fmt.Errorf("%s file exceeds 1 MiB", kind)
 	}
 
 	// Bound reads even when a file grows after inspection.
 	data, err := io.ReadAll(io.LimitReader(file, maxFileSize+1))
 	if err != nil {
-		return fmt.Errorf("%s file could not be read", kind)
+		return nil, fmt.Errorf("%s file could not be read", kind)
 	}
+	if len(data) > maxFileSize {
+		return nil, fmt.Errorf("%s file exceeds 1 MiB", kind)
+	}
+	return data, nil
+}
+
+func decodeYAML(data []byte, kind string, target any) error {
+	// Bounded documents must be UTF-8 text.
 	if len(data) > maxFileSize {
 		return fmt.Errorf("%s file exceeds 1 MiB", kind)
 	}
@@ -228,7 +289,7 @@ func readYAML(path, kind string, private bool, target any) error {
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
 		return fmt.Errorf("%s file must contain a YAML mapping", kind)
 	}
-	err = documents.Decode(new(yaml.Node))
+	err := documents.Decode(new(yaml.Node))
 	if err == nil {
 		return fmt.Errorf("%s file must contain one YAML document", kind)
 	}

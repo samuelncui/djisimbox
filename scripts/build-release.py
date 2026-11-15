@@ -107,9 +107,10 @@ def check_binary(binary, arch, version):
 
 
 def package(arch, version, output, temporary, third_party):
-    name = f"djisimbox_{version}_linux_{arch}"
-    directory = temporary / name
-    directory.mkdir()
+    # Fixed asset and directory names let users download releases/latest without knowing the version.
+    name = "djisimbox"
+    directory = temporary / arch / name
+    directory.mkdir(parents=True)
     for relative in SOURCE_FILES:
         source = ROOT / relative
         if source.is_symlink() or any(parent.is_symlink() for parent in source.parents if parent.is_relative_to(ROOT)):
@@ -126,7 +127,7 @@ def package(arch, version, output, temporary, third_party):
         "-o", str(directory / "djisimbox"), "./cmd/djisimbox", env=env,
     )
     files = ("djisimbox", *SOURCE_FILES, "THIRD_PARTY_NOTICES")
-    archive = output / f"{name}.tar.gz"
+    archive = output / f"{name}_linux_{arch}.tar.gz"
     with archive.open("wb") as raw, gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as zipped:
         with tarfile.open(fileobj=zipped, mode="w", format=tarfile.PAX_FORMAT) as tar:
             for relative in sorted(files):

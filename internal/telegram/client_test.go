@@ -369,3 +369,88 @@ func (b *countedBody) Close() error {
 	b.closed = true
 	return nil
 }
+
+func TestMe(t *testing.T) {
+	// Check the destination and that the bot username is returned without markup.
+	client, err := New("1234:FAKE_TOKEN", &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.String() != "https://api.telegram.org/bot1234:FAKE_TOKEN/getMe" {
+			t.Errorf("unexpected destination: %s", request.URL)
+		}
+		return response(http.StatusOK, `{"ok":true,"result":{"id":1234,"username":"sim_bot"}}`), nil
+	})})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	username, err := client.Me(context.Background())
+	if err != nil || username != "sim_bot" {
+		t.Fatalf("Me() = (%q, %v), want (sim_bot, nil)", username, err)
+	}
+}
+
+func TestRecentChats(t *testing.T) {
+	// Provide updates from every supported source, with a repeated chat and nameless entries.
+	const updates = `{"ok":true,"result":[
+		{"update_id":1,"message":{"chat":{"id":7,"first_name":"Old","last_name":"Name"}}},
+		{"update_id":2,"edited_message":{"chat":{"id":-100,"title":"Family"}}},
+		{"update_id":3,"channel_post":{"chat":{"id":-200,"username":"news"}}},
+		{"update_id":4,"my_chat_member":{"chat":{"id":9,"first_name":"Lysa","last_name":"Chen"}}},
+		{"update_id":5,"message":{"chat":{"id":7,"first_name":"Lysa","last_name":"Wu"}}},
+		{"update_id":6,"callback_query":{}}
+	]}`
+	client, err := New("1234:FAKE_TOKEN", &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		// The poll must not confirm updates, so it may not carry an offset.
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatalf("decode outgoing JSON: %v", err)
+		}
+		if _, ok := body["offset"]; ok || !strings.HasSuffix(request.URL.Path, "/getUpdates") {
+			t.Errorf("unexpected request: %s %v", request.URL.Path, body)
+		}
+		return response(http.StatusOK, updates), nil
+	})})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	// Newest first, one entry per chat, with the newest name.
+	chats, err := client.RecentChats(context.Background())
+	if err != nil {
+		t.Fatalf("RecentChats() error: %v", err)
+	}
+	want := []Chat{{7, "Lysa Wu"}, {9, "Lysa Chen"}, {-200, "@news"}, {-100, "Family"}}
+	if fmt.Sprint(chats) != fmt.Sprint(want) {
+		t.Errorf("RecentChats() = %v, want %v", chats, want)
+	}
+}
+
+func TestReadOnlyCallsRedactFailures(t *testing.T) {
+	// Transport errors carry the token-bearing URL; API conflicts must be classified without it.
+	const token = "1234:SECRET_TOKEN"
+	cases := map[string]func(*http.Request) (*http.Response, error){
+		"transport": func(request *http.Request) (*http.Response, error) {
+			return nil, &url.Error{Op: "Post", URL: request.URL.String(), Err: errors.New("dial failed")}
+		},
+		"conflict": func(*http.Request) (*http.Response, error) {
+			return response(http.StatusConflict, `{"ok":false,"error_code":409,"description":"webhook 1234:SECRET_TOKEN"}`), nil
+		},
+	}
+	for name, transport := range cases {
+		t.Run(name, func(t *testing.T) {
+			client, err := New(token, &http.Client{Transport: roundTripFunc(transport)})
+			if err != nil {
+				t.Fatalf("create client: %v", err)
+			}
+			_, meErr := client.Me(context.Background())
+			_, chatsErr := client.RecentChats(context.Background())
+			for _, err := range []error{meErr, chatsErr} {
+				if err == nil || strings.Contains(err.Error(), "SECRET_TOKEN") {
+					t.Errorf("unsafe or missing error: %v", err)
+				}
+			}
+			var failure *Error
+			if name == "conflict" && (!errors.As(chatsErr, &failure) || failure.Code != http.StatusConflict) {
+				t.Errorf("conflict code not preserved: %v", chatsErr)
+			}
+		})
+	}
+}

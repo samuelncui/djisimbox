@@ -6,7 +6,11 @@ Forward SMS messages, MMS notifications and incoming call text alerts from a USB
 
 **[Install](docs/install.md) · [Use and troubleshoot](docs/operations.md)**
 
-Download and verify the ARM64 package, then run `sudo ./install.sh`. The installer guides you through choosing a SIM and Telegram recipient, installs the service, and keeps existing configuration on upgrades.
+Install or upgrade with one command on the board; a guide walks you through the language, bot token and recipients for each SIM:
+
+```sh
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbox/main/install.sh)"
+```
 
 ## What you need
 

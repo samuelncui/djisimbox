@@ -18,7 +18,8 @@ flowchart LR
 | `internal/modem` | 发现 modem/SIM，接收完整短信、彩信通知（WAP Push 中的 M-Notification.ind，只取发件人、主题、大小和有效期）和被动来电事件，确认原件释放；ModemManager 负责协议与多段短信组装。 |
 | `internal/config` | 严格 YAML（拒绝未知字段、重复键和多余文档）、私有凭据和 ICCID 到收件人的显式映射。 |
 | `internal/queue` | 来源身份、首次分配的收件人、有序分段、容量、重试和完成状态，全部保存在内存。 |
-| `internal/telegram` | 纯文本格式、Unicode 安全分段、有界 HTTPS 请求和脱敏错误分类。 |
+| `internal/telegram` | 纯文本格式（中文/英文，由配置的 `language` 选择）、Unicode 安全分段、有界 HTTPS 请求和脱敏错误分类。 |
+| `internal/setup` | `djisimbox setup` 交互引导：选语言、bot token、为每张已连接 SIM 选收件人，生成带注释的配置并原子写入；安装器首次安装时调用。 |
 | `internal/app` | 协调接收与独立投递循环，网络等待不阻塞接收。 |
 | `cmd/djisimbox` | 生命周期、tmpfs 检查、单实例锁及私有状态 socket。 |
 

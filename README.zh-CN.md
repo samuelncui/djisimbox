@@ -6,7 +6,11 @@
 
 **[开始安装](docs/install.zh-CN.md) · [日常使用与排错](docs/operations.zh-CN.md)**
 
-下载并校验 ARM64 安装包后，运行 `sudo ./install.sh`。安装器会引导你选择 SIM 和 Telegram 收件人，安装服务，并在升级时保留已有配置。
+在板子上用一条命令安装或升级，引导会带你选语言、填 bot token、给每张卡选收件人：
+
+```sh
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbox/main/install.sh)"
+```
 
 ## 准备什么
 

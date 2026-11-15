@@ -99,6 +99,54 @@ func TestLoadHandWrittenYAML(t *testing.T) {
 	}
 }
 
+func TestLanguage(t *testing.T) {
+	// Omitted language keeps Chinese notifications; only the two supported languages are accepted.
+	for _, tc := range []struct {
+		value string
+		want  string
+		valid bool
+	}{
+		{"", LanguageChinese, true},
+		{LanguageEnglish, LanguageEnglish, true},
+		{LanguageChinese, LanguageChinese, true},
+		{"fr", "", false},
+		{"EN", "", false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			document := baseDocument()
+			if tc.value != "" {
+				document["language"] = tc.value
+			}
+			cfg, err := Load(writeFixture(t, document, validSecrets(), 0600))
+			if !tc.valid {
+				if err == nil {
+					t.Fatal("unsupported language accepted")
+				}
+				return
+			}
+			if err != nil || cfg.Language != tc.want {
+				t.Fatalf("language=%q err=%v", cfg.Language, err)
+			}
+		})
+	}
+}
+
+func TestParseValidatesDocumentsInMemory(t *testing.T) {
+	// Setup validates generated files before writing them; the same rules apply as for Load.
+	document := []byte("version: 1\nlanguage: en\nroutes:\n  - iccid: \"89000000000000000001\"\n" +
+		"    recipients:\n      - {bot: default, chat_id: 123456789}\n")
+	cfg, err := Parse(document, []byte(validSecrets()))
+	if err != nil || cfg.Language != LanguageEnglish || cfg.Bots["default"] != testToken {
+		t.Fatalf("Parse: cfg=%+v err=%v", cfg, err)
+	}
+	if _, err := Parse(document, []byte(`{"bots":{}}`)); err == nil {
+		t.Fatal("route with a missing bot was accepted")
+	}
+	if _, err := Parse([]byte("version: 2\n"), []byte(validSecrets())); err == nil {
+		t.Fatal("invalid configuration was accepted")
+	}
+}
+
 func TestPublishedExamplesLoad(t *testing.T) {
 	// Copy the packaged examples privately and point the config at the example secrets.
 	dir := t.TempDir()

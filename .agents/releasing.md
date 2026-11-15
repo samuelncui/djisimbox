@@ -8,7 +8,7 @@
 
 1. 以 `fetch-depth: 0` 获取全部历史，通过 `bash scripts/check-secrets.sh` 检查工作目录和所有已获取 Git refs 的历史；脚本固定 Gitleaks 版本和下载摘要，输出脱敏。然后执行安装器测试，并检查 Go 格式、依赖完整性、`go vet` 和 `go test -race -count=1 ./...`。测试使用独立的 D-Bus 守护进程与合成数据，无需真实 modem、Telegram bot 或主机 `/etc` 配置。
 2. 验证成功后，以 `CGO_ENABLED=0`、`-trimpath`、`-buildvcs=false` 编译 ARM64 和 amd64。检查包内 ELF 架构、动态解释器与动态库依赖，并在 amd64 构建机执行包内 `djisimbox version`。
-3. 上传名为 `djisimbox-dev-<12 位提交 SHA>-linux` 的 Actions artifact，保留 14 天；下载步骤见[安装指南](../docs/install.zh-CN.md#1-下载并校验)。手动运行不会创建 Release。
+3. 上传名为 `djisimbox-dev-<12 位提交 SHA>-linux` 的 Actions artifact，保留 14 天，供测试未发布的提交。手动运行不会创建 Release。
 
 工作流使用 `go.mod` 要求的 Go 1.26 系列最新可用补丁。`verify`、`build` 只有 `contents: read`，checkout 不保留凭证；只有最后的 `release` 作业具有 `contents: write`，它只下载同次构建的 artifact 并调用 GitHub CLI。官方 Actions 均固定完整提交 SHA，旁注标明核验过的版本；更新时一起核对上游发布与 SHA。
 
@@ -21,16 +21,16 @@
 标签触发完整验证与构建；版本格式不合法、验证或打包失败时都不会创建 Release。成功后，工作流用已有标签创建 GitHub Release、生成变更说明，并上传：
 
 ```text
-djisimbox_v0.1.0_linux_arm64.tar.gz
-djisimbox_v0.1.0_linux_amd64.tar.gz
+djisimbox_linux_arm64.tar.gz
+djisimbox_linux_amd64.tar.gz
 SHA256SUMS
 ```
 
-二进制的 `djisimbox version` 返回同一标签。带预发布部分的标签标记为 prerelease。工作流使用 `gh release create --verify-tag`，标签必须已存在；重跑已发布标签不会覆盖既有 Release 或资产。发布中断时，先检查是否留下草稿及已上传文件，再由维护者处理并重跑。普通 PR、分支或手动构建不会发布。
+资产名不含版本号，版本由二进制的 `djisimbox version` 返回。带预发布部分的标签标记为 prerelease。用户的一行安装命令从 `main` 取 `install.sh`，脚本通过 GitHub API 选最新的 Release（包括 prerelease，可用 `DJISIMBOX_VERSION` 固定版本），下载对应架构的包并按 `SHA256SUMS` 校验后安装；因此 `install.sh` 的下载逻辑要与已发布的资产名保持兼容。工作流使用 `gh release create --verify-tag`，标签必须已存在；重跑已发布标签不会覆盖既有 Release 或资产。发布中断时，先检查是否留下草稿及已上传文件，再由维护者处理并重跑。普通 PR、分支或手动构建不会发布。
 
 ## 运行包边界
 
-每个压缩包有同名根目录，文件清单固定在 `scripts/build-release.py` 的 `SOURCE_FILES`：
+每个压缩包的根目录都是 `djisimbox/`，文件清单固定在 `scripts/build-release.py` 的 `SOURCE_FILES`：
 
 - `djisimbox`、`install.sh`、`README.md`、`README.zh-CN.md`、项目 `LICENSE`。
 - `deploy/` 中的五个随项目维护的 systemd、polkit、networkd 文件。
@@ -40,7 +40,7 @@ SHA256SUMS
 
 脚本逐个复制清单中的普通文件，新增文件需主动加入清单。运行配置、凭证、运行状态、`.git`、开发记录和研究文档不会因位于工作目录而自动入包。依赖许可证从 `go mod download` 后通过 `go mod verify` 的模块目录读取；新增、删除或本地替换依赖时，先审阅并更新许可证清单。压缩包元数据统一为固定时间、UID/GID 和文件权限；`djisimbox` 和 `install.sh` 保留执行权限。
 
-解压后，在运行包根目录执行 `sudo ./install.sh` 完成首次安装或升级；配置和凭据要求见[安装文档](../docs/install.zh-CN.md)。
+解压后执行 `sudo ./djisimbox/install.sh` 即可安装或升级（一行安装命令就是自动完成这一步）；首次安装由 `djisimbox setup` 引导生成配置，见[安装文档](../docs/install.zh-CN.md)。
 
 GitHub 自动生成的 Source code 压缩包是标签对应的公开仓库源码，与上述运行包不同；仓库公开前仍需审阅所有将提交的文件和历史。
 
@@ -60,7 +60,7 @@ go test -race -count=1 ./...
 python3 scripts/build-release.py v0.1.0 --output-dir dist
 cd dist
 sha256sum --check --strict SHA256SUMS
-tar -tzf djisimbox_v0.1.0_linux_arm64.tar.gz
+tar -tzf djisimbox_linux_arm64.tar.gz
 ```
 
 将示例版本替换为实际版本；开发构建可使用 `dev-` 加提交 SHA 的前 12 位。输出目录必须为空，脚本无需主机凭证、真实设备或 bot。ARM64 包的实际启动、USB 热插拔、多 modem 和真实短信/来电仍需在目标设备验证，交叉编译不能替代这些检查。

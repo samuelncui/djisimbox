@@ -2,64 +2,47 @@
 
 **English** · [简体中文](install.zh-CN.md)
 
-Use ARM64 Armbian / Debian 13 with systemd-networkd. Prepare a microSD card using an [Armbian image](https://armbian.com/boards/orangepizero2w), set up Wi-Fi with access to Telegram, and confirm you can connect over SSH. Use an activated SIM with its PIN lock disabled. USB0 is for power; USB1 connects to the modem with a data cable. For first-time setup, leave the modem disconnected until the installer asks you to connect it.
+## Prepare
 
-## 1. Download and verify
+- A microSD card with ARM64 [Armbian](https://armbian.com/boards/orangepizero2w) (Debian 13), Wi-Fi that can reach Telegram, and SSH access to the board.
+- An activated SIM with its PIN lock disabled. USB0 is for power; USB1 connects to the DJI cellular modem with a data cable.
+- A bot created with [BotFather](https://core.telegram.org/bots/features#botfather); keep its token. Ask the recipient to send the bot any message in Telegram, for example `/start`.
 
-On your computer, sign in to GitHub and open [CI builds](https://github.com/samuelncui/djisimbox/actions/workflows/ci.yml?query=branch%3Amain). Select the latest successful green run on `main`. Under **Artifacts**, download `djisimbox-dev-…-linux`. Extract the ZIP and find the package ending in `linux_arm64.tar.gz` and `SHA256SUMS`.
+## Install
 
-Upload these two files from their directory to the board. Replace the SSH address below with your own:
-
-```sh
-ASSET=$(awk '$2 ~ /_linux_arm64.tar.gz$/ {print $2}' SHA256SUMS)
-ssh orangepi@orangepizero2w.local 'mkdir -p ~/djisimbox-install'
-scp "$ASSET" SHA256SUMS orangepi@orangepizero2w.local:djisimbox-install/
-ssh orangepi@orangepizero2w.local
-```
-
-**Run the remaining commands on the board.** Verify and extract the package:
+Connect to the board over SSH and run this one command:
 
 ```sh
-cd ~/djisimbox-install
-ASSET=$(awk '$2 ~ /_linux_arm64.tar.gz$/ {print $2}' SHA256SUMS)
-sha256sum --check --ignore-missing SHA256SUMS &&
-  tar -xzf "$ASSET" &&
-  cd "${ASSET%.tar.gz}"
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbox/main/install.sh)"
 ```
 
-The ARM64 package must show `OK`; download it again if verification fails. Keep the terminal in this extracted directory.
+It downloads the latest version, first turns off the DJI modem's USB network interfaces (no SIM data is used), installs the service, then starts the guide:
 
-## 2. Run the installer
-
-Create a bot through [BotFather](https://core.telegram.org/bots/features#botfather), save its token, and ask the intended recipient to send `/start` to the bot in a private chat. Then run:
-
-```sh
-sudo ./install.sh
-```
-
-The installer protects the DJI modem's USB network interfaces (`2c7c:0125`) before downloading dependencies, then installs the required packages and service files. It requires systemd-networkd and keeps Telegram traffic on Wi-Fi.
-
-On first setup, follow the prompts to:
-
-1. Connect the modem when asked, and choose a SIM by the last six ICCID digits shown.
+1. Choose a language (中文 or English); notifications use it too.
 2. Enter the bot token; your input is hidden.
-3. Have the recipient send `/start` to the bot, or any new message if they chatted with it before, then enter their numeric chat ID. The installer queries `getUpdates` to show available IDs when possible; only the ID you enter receives notifications.
+3. For each detected SIM, shown by its phone number, choose recipients: pick numbers from the list of chats that recently messaged the bot, or type chat IDs.
 
-If the bot already has a Webhook or another program polling its updates, enter a known chat ID manually or use a new bot. Keep the existing Webhook enabled. See [chat ID help](operations.md#find-a-telegram-chat-id) for groups, channels, or an empty result.
-
-The installer writes a commented `config.yaml` and a private `secrets.yaml` in `/etc/djisimbox`, checks the configuration and modem, and starts the service with startup at boot enabled. Running it again preserves existing `config.yaml` and `secrets.yaml` while updating the program and service files. First setup configures one SIM and one recipient; [add more routes or recipients](operations.md#change-recipients-or-add-a-sim) afterward.
-
-## 3. Receive your first notification
-
-Send a normal test SMS to the selected SIM. Installation is complete when the intended Telegram recipient receives a notification like this:
+You're done when it prints `Installed.` Send the SIM an SMS and the recipient's Telegram receives:
 
 ```text
-短信通知
-SIM: Work SIM
-号码: 10000
-时间: 2026-01-01T12:00:00Z
+SMS
+SIM: +8613800000000
+From: 10000
+Time: 2026-01-01T12:00:00Z
 
 Test SMS
 ```
 
-If you need call alerts, call the SIM and confirm you receive `来电通知`. The installer's checks do not send a test notification. See [everyday use](operations.md) for status, logs, upgrades, and troubleshooting.
+## Later
+
+- **Upgrade**: run the same command again; your configuration is kept.
+- **Add a SIM, change recipients or language**: run `sudo djisimbox setup` to go through the guide again, or add `-- --setup` to the install command to upgrade and enter the guide.
+- **Skip the guide (unattended)**: store the token in a file only root can read, give the language and recipients as options, and add `--yes` so nothing is asked:
+
+  ```sh
+  sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbox/main/install.sh)" -- \
+    --language en --token-file /root/bot-token --route all=123456789 --yes
+  ```
+
+  `--route` can repeat, as `SIM=chat IDs`: the SIM is an ICCID, a phone number or `all` (every SIM connected when the guide runs); separate chat IDs with commas, or use `-` to stop forwarding that SIM. Without `--yes`, each option you give only skips its own question.
+- If a recipient is missing from the list, or you want a group or channel, see [chat ID help](operations.md#find-a-telegram-chat-id); for status, logs and troubleshooting, see [everyday use](operations.md).

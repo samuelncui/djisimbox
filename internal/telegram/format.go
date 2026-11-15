@@ -12,8 +12,37 @@ const MaxTextUnits = 4096
 
 const maxHeaderFieldUnits = 256
 
+// wording holds the fixed notification text for one language.
+type wording struct {
+	sms, call, mms, from, time, unknownNumber, subject, size, expiry, notDownloaded, iccidEnding string
+}
+
+// wordings is keyed by the configuration language; Chinese is the default.
+var wordings = map[string]wording{
+	"zh-CN": {sms: "短信通知", call: "来电通知", mms: "彩信通知", from: "号码: ", time: "时间: ",
+		unknownNumber: "未知号码", subject: "主题: ", size: "大小: ", expiry: "有效期至: ",
+		notDownloaded: "内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。", iccidEnding: "ICCID 尾号 "},
+	"en": {sms: "SMS", call: "Incoming call", mms: "MMS", from: "From: ", time: "Time: ",
+		unknownNumber: "Unknown number", subject: "Subject: ", size: "Size: ", expiry: "Expires: ",
+		notDownloaded: "Content not downloaded: MMS content can only be fetched over this SIM's cellular data.",
+		iccidEnding:   "ICCID ending "},
+}
+
+func wordingFor(language string) wording {
+	if w, ok := wordings[language]; ok {
+		return w
+	}
+	return wordings["zh-CN"]
+}
+
+// ICCIDEndingLabel names a SIM by its ICCID's last digits when no name or number is known.
+func ICCIDEndingLabel(language, suffix string) string {
+	return wordingFor(language).iccidEnding + suffix
+}
+
 // Message contains display metadata and an unmodified SMS body.
 type Message struct {
+	Language  string
 	Label     string
 	Sender    string
 	Timestamp string
@@ -22,6 +51,7 @@ type Message struct {
 
 // Call contains observed incoming-call metadata for a text notification.
 type Call struct {
+	Language   string
 	Label      string
 	Number     string
 	ObservedAt string
@@ -29,6 +59,7 @@ type Call struct {
 
 // MMS contains an MMS notification's metadata; the carrier keeps the content.
 type MMS struct {
+	Language  string
 	Label     string
 	Sender    string
 	Timestamp string
@@ -40,13 +71,14 @@ type MMS struct {
 // FormatMMS renders one bounded notification, preserving unknown optional metadata as absent.
 func FormatMMS(mms MMS) string {
 	// Share the SMS metadata layout, then list what the notification says about the stored content.
+	w := wordingFor(mms.Language)
 	var text strings.Builder
-	text.WriteString(formatHeader("彩信通知", mms.Label, mms.Sender, mms.Timestamp))
+	text.WriteString(formatHeader(w, w.mms, mms.Label, mms.Sender, mms.Timestamp))
 	text.WriteByte('\n')
 	for _, field := range []struct{ name, value string }{
-		{"主题: ", headerValue(mms.Subject)},
-		{"大小: ", formatSize(mms.Size)},
-		{"有效期至: ", headerValue(mms.Expiry)},
+		{w.subject, headerValue(mms.Subject)},
+		{w.size, formatSize(mms.Size)},
+		{w.expiry, headerValue(mms.Expiry)},
 	} {
 		if field.value != "" {
 			text.WriteString("\n" + field.name + field.value)
@@ -54,7 +86,7 @@ func FormatMMS(mms MMS) string {
 	}
 
 	// The content needs the SIM's cellular data, which the service never uses.
-	text.WriteString("\n内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。")
+	text.WriteString("\n" + w.notDownloaded)
 	return text.String()
 }
 
@@ -74,13 +106,14 @@ func formatSize(size int64) string {
 // FormatCall renders one bounded notification, preserving unknown optional metadata as absent.
 func FormatCall(call Call) string {
 	// A missing caller number must remain explicit after metadata normalization.
+	w := wordingFor(call.Language)
 	number := headerValue(call.Number)
 	if number == "" {
-		number = "未知号码"
+		number = w.unknownNumber
 	}
 
 	// Share the SMS metadata layout, bounded to fit one Telegram message.
-	return formatHeader("来电通知", call.Label, number, call.ObservedAt)
+	return formatHeader(w, w.call, call.Label, number, call.ObservedAt)
 }
 
 // Format prepends one readable header and splits text at UTF-8 rune boundaries.
@@ -88,7 +121,8 @@ func FormatCall(call Call) string {
 // Metadata is bounded and kept on single lines; absent fields stay absent.
 func Format(message Message) []string {
 	// Share the call metadata layout and separate it from the unmodified SMS body.
-	text := formatHeader("短信通知", message.Label, message.Sender, message.Timestamp) + "\n\n" + message.Text
+	w := wordingFor(message.Language)
+	text := formatHeader(w, w.sms, message.Label, message.Sender, message.Timestamp) + "\n\n" + message.Text
 
 	// Slice the original bytes at rune boundaries; no body bytes are inserted or removed.
 	var parts []string
@@ -107,14 +141,14 @@ func Format(message Message) []string {
 	return append(parts, text[start:])
 }
 
-func formatHeader(title, label, number, timestamp string) string {
+func formatHeader(w wording, title, label, number, timestamp string) string {
 	// Keep metadata in the same order, with one bounded line per observed field.
 	var header strings.Builder
 	header.WriteString(title)
 	for _, field := range []struct{ name, value string }{
 		{"SIM: ", label},
-		{"号码: ", number},
-		{"时间: ", timestamp},
+		{w.from, number},
+		{w.time, timestamp},
 	} {
 		if value := headerValue(field.value); value != "" {
 			header.WriteByte('\n')

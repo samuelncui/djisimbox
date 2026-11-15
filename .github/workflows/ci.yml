@@ -105,7 +105,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           sha256sum --check --strict SHA256SUMS
-          assets=("djisimbox_${VERSION}_linux_arm64.tar.gz" "djisimbox_${VERSION}_linux_amd64.tar.gz" SHA256SUMS)
+          assets=(djisimbox_linux_arm64.tar.gz djisimbox_linux_amd64.tar.gz SHA256SUMS)
           options=(--verify-tag --title "$VERSION" --generate-notes)
           if [[ "${VERSION%%+*}" == *-* ]]; then
             options+=(--prerelease)

@@ -94,19 +94,20 @@ func (w *worker) accept(ctx context.Context, message modem.Message) error {
 			label = message.OwnNumber
 		}
 		if label == "" {
-			label = "ICCID 尾号 " + simSuffix(message.SIMID)
+			label = telegram.ICCIDEndingLabel(w.config.Language, simSuffix(message.SIMID))
 		}
+		language := w.config.Language
 		switch message.Kind {
 		case modem.SMS:
-			parts = telegram.Format(telegram.Message{Label: label, Sender: message.Sender,
+			parts = telegram.Format(telegram.Message{Language: language, Label: label, Sender: message.Sender,
 				Timestamp: message.Timestamp, Text: message.Text})
 		case modem.IncomingCall:
-			parts = []string{telegram.FormatCall(telegram.Call{Label: label, Number: message.Sender,
-				ObservedAt: message.Timestamp})}
+			parts = []string{telegram.FormatCall(telegram.Call{Language: language, Label: label,
+				Number: message.Sender, ObservedAt: message.Timestamp})}
 		case modem.MMS:
-			parts = []string{telegram.FormatMMS(telegram.MMS{Label: label, Sender: message.Sender,
-				Timestamp: message.Timestamp, Subject: message.MMS.Subject, Size: message.MMS.Size,
-				Expiry: message.MMS.Expiry})}
+			parts = []string{telegram.FormatMMS(telegram.MMS{Language: language, Label: label,
+				Sender: message.Sender, Timestamp: message.Timestamp, Subject: message.MMS.Subject,
+				Size: message.MMS.Size, Expiry: message.MMS.Expiry})}
 		default:
 			return errors.New("unsupported notification kind")
 		}

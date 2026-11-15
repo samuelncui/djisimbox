@@ -92,6 +92,27 @@ func TestFormatMMS(t *testing.T) {
 	}
 }
 
+func TestEnglishWording(t *testing.T) {
+	// English notifications keep the same layout with translated titles and field names.
+	sms := Format(Message{Language: "en", Label: "+8613800000000", Sender: "10086", Timestamp: "t", Text: "body"})
+	if len(sms) != 1 || sms[0] != "SMS\nSIM: +8613800000000\nFrom: 10086\nTime: t\n\nbody" {
+		t.Fatalf("English SMS = %q", sms)
+	}
+	if got := FormatCall(Call{Language: "en", Label: "SIM"}); got != "Incoming call\nSIM: SIM\nFrom: Unknown number" {
+		t.Fatalf("English call = %q", got)
+	}
+	got := FormatMMS(MMS{Language: "en", Sender: "1069", Size: 2048, Expiry: "e"})
+	want := "MMS\nFrom: 1069\n\nSize: 2 KB\nExpires: e\n" +
+		"Content not downloaded: MMS content can only be fetched over this SIM's cellular data."
+	if got != want {
+		t.Fatalf("English MMS = %q", got)
+	}
+	if ICCIDEndingLabel("en", "1985") != "ICCID ending 1985" || ICCIDEndingLabel("zh-CN", "1985") != "ICCID 尾号 1985" ||
+		ICCIDEndingLabel("", "1985") != "ICCID 尾号 1985" {
+		t.Fatal("ICCID ending label is not localized")
+	}
+}
+
 func TestFormatCallBoundsUnicodeFields(t *testing.T) {
 	// Oversized Unicode fields must remain one notification with three metadata lines.
 	text := FormatCall(Call{

@@ -1,35 +1,16 @@
 """Installer boundaries using synthetic sysfs, ModemManager and Telegram data."""
 
-import json
+import hashlib
+import io
 import os
 from pathlib import Path
-import stat
 import subprocess
+import tarfile
 import tempfile
 import unittest
 
 
 INSTALLER = Path(__file__).resolve().parents[1] / "install.sh"
-TOKEN = "123456789:AAAAAAAAAAAAAAAAAAAA"
-ICCID = "89000000000000000001"
-OTHER_ICCID = "89000000000000000002"
-
-
-def expected_config(iccid, chat):
-    return f"""# DJI SIM Box configuration. After editing, run: sudo systemctl restart djisimbox
-version: 1
-
-# One entry per SIM, matched by ICCID (the SIM card number, not the phone number).
-routes:
-  - iccid: "{iccid}"
-    # Optional label; when omitted, notifications show the SIM's own phone number.
-    # name: My SIM
-    recipients:
-      - bot: default
-        chat_id: "{chat}"
-"""
-
-
 class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="djisimbox-install-test-")
@@ -91,121 +72,323 @@ touch "$FIXTURE/continued"
             "ip link set dev cell0 down", "ip address flush dev cell0",
         ])
 
-    def test_discovers_dji_sim_and_skips_other_devices_and_missing_sim(self):
-        device = self.device("cell0")
-        other = self.device("wifi0", vendor="1234")
-        modem_paths = [f"/org/freedesktop/ModemManager1/Modem/{i}" for i in range(3)]
-        (self.fixture / "modems.json").write_text(json.dumps({"modem-list": modem_paths}))
-        for i, (path, sim) in enumerate([
-            (device, "/org/freedesktop/ModemManager1/SIM/7"),
-            (other, "/org/freedesktop/ModemManager1/SIM/8"),
-            (device, "--"),
-        ]):
-            (self.fixture / f"modem-{i}.json").write_text(json.dumps({
-                "modem": {"generic": {"device": str(path), "sim": sim}},
-            }))
-        (self.fixture / "sim.json").write_text(json.dumps({
-            "sim": {"properties": {"iccid": ICCID}},
-        }))
-        result = self.bash('''
-mmcli() {
-  case $1 in
-    --list-modems) cat "$FIXTURE/modems.json" ;;
-    --modem) cat "$FIXTURE/modem-${2##*/}.json" ;;
-    --sim) [[ $2 == /org/freedesktop/ModemManager1/SIM/7 ]]; cat "$FIXTURE/sim.json" ;;
-    *) return 1 ;;
+    # ---- bootstrap ----
+
+    def package(self, name="djisimbox_linux_arm64.tar.gz", script=None, sums=None):
+        """Create a fake release asset plus SHA256SUMS under FIXTURE/release."""
+        release = self.fixture / "release"
+        release.mkdir(exist_ok=True)
+        script = script or '#!/bin/sh\nprintf "%s\\n" "$@" >"$FIXTURE/inner-args"\nexit "${INNER_STATUS:-0}"\n'
+        data = script.encode()
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            info = tarfile.TarInfo("djisimbox/install.sh")
+            info.size, info.mode = len(data), 0o755
+            archive.addfile(info, io.BytesIO(data))
+        (release / name).write_bytes(buffer.getvalue())
+        digest = hashlib.sha256(buffer.getvalue()).hexdigest()
+        (release / "SHA256SUMS").write_text(sums if sums is not None else f"{digest}  {name}\n")
+
+    BOOTSTRAP = r"""
+mkdir -p "$FIXTURE/tmp"; export TMPDIR="$FIXTURE/tmp"
+uname() { printf '%s\n' "${FAKE_ARCH:-aarch64}"; }
+curl() {
+  printf 'curl %s\n' "$*" >>"$FIXTURE/curl"
+  local out='' url=${@: -1}
+  [[ $1 == -fsSL && $2 == --retry && $3 == 3 ]] || return 2
+  [[ $4 == -o ]] && out=$5
+  case $url in
+    https://api.github.com/repos/samuelncui/djisimbox/releases?per_page=1)
+      printf '%s\n' '[{"url":"x","tag_name": "v0.1.0-rc.1","name":"rc"}]' ;;
+    https://github.com/samuelncui/djisimbox/releases/download/*/*)
+      cp "$FIXTURE/release/${url##*/}" "$out" ;;
+    *) return 22 ;;
   esac
 }
-discover_sims
-''')
+bootstrap "$@"
+status=$?
+exit $status
+"""
+
+    def run_bootstrap(self, *args, **env):
+        return subprocess.run(
+            ["bash", "-c", 'source "$1"; shift\n' + self.BOOTSTRAP, "bash", str(INSTALLER), *args],
+            text=True, capture_output=True, timeout=10,
+            env=dict(os.environ, FIXTURE=str(self.fixture), **env))
+
+    def curl_log(self):
+        return (self.fixture / "curl").read_text().splitlines()
+
+    def leftover_tmp(self):
+        tmp = self.fixture / "tmp"
+        return list(tmp.iterdir()) if tmp.exists() else []
+
+    def test_bootstrap_uses_newest_release_and_forwards_arguments(self):
+        self.package()
+        result = self.run_bootstrap("--flag", "two words", INNER_STATUS="0")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), ICCID)
+        base = "https://github.com/samuelncui/djisimbox/releases/download/v0.1.0-rc.1"
+        log = self.curl_log()
+        self.assertIn("curl -fsSL --retry 3 https://api.github.com/repos/samuelncui/djisimbox/releases?per_page=1", log)
+        self.assertTrue(any(line.endswith(f"{base}/djisimbox_linux_arm64.tar.gz") for line in log), log)
+        self.assertTrue(any(line.endswith(f"{base}/SHA256SUMS") for line in log), log)
+        self.assertIn("Downloading djisimbox v0.1.0-rc.1 (arm64) / 正在下载 djisimbox v0.1.0-rc.1（arm64）", result.stdout)
+        self.assertEqual((self.fixture / "inner-args").read_text().splitlines(), ["--flag", "two words"])
+        self.assertEqual(self.leftover_tmp(), [])
 
-    def configure(self, input, curl_failure=False):
-        commands = '''
-protect_interfaces() { :; }
-discover_sims() { printf '%s\\n' 89000000000000000001 89000000000000000002; }
-jq() { printf 'jq %s\\n' "$*" >>"$FIXTURE/argv"; command jq "$@"; }
-curl() {
-  printf 'curl %s\\n' "$*" >>"$FIXTURE/argv"
-  cat >"$FIXTURE/request"
-'''
-        commands += "  return 22\n" if curl_failure else '''
-  printf '%s\\n' '{"ok":true,"result":[{"message":{"chat":{"id":123456789,"first_name":"Alice"}}},{"message":{"chat":{"id":234567890,"first_name":"Bob"}}}]}'
-'''
-        commands += '}\nconfigure "$FIXTURE/config"\n'
-        return self.bash(commands, input)
-
-    def test_first_setup_binds_only_selected_sim_and_explicit_recipient(self):
-        result = self.configure(f"\n2\n{TOKEN}\n\n234567890\n")
+    def test_bootstrap_amd64_asset(self):
+        self.package("djisimbox_linux_amd64.tar.gz")
+        result = self.run_bootstrap(FAKE_ARCH="x86_64", DJISIMBOX_VERSION="v1.2.3")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.config / "config.yaml").read_text(), expected_config(OTHER_ICCID, "234567890"))
-        self.assertEqual((self.config / "secrets.yaml").read_text(),
-                         f'# Telegram bot tokens by name. Keep this file private.\nbots:\n  default: "{TOKEN}"\n')
-        for name in ("config.yaml", "secrets.yaml"):
-            self.assertEqual(stat.S_IMODE((self.config / name).stat().st_mode), 0o600)
-        self.assertNotIn(TOKEN, result.stdout + result.stderr)
-        self.assertNotIn(TOKEN, (self.fixture / "argv").read_text())
-        self.assertNotIn(OTHER_ICCID, result.stdout)
-        self.assertIn("/getUpdates", (self.fixture / "request").read_text())
+        self.assertIn("djisimbox_linux_amd64.tar.gz", "\n".join(self.curl_log()))
 
-    def test_webhook_conflict_allows_known_group_id(self):
-        result = self.configure(f"\n1\n{TOKEN}\n\n-1001234567890\n", curl_failure=True)
+    def test_version_variable_skips_api(self):
+        self.package()
+        result = self.run_bootstrap(DJISIMBOX_VERSION="v9.8.7")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.config / "config.yaml").read_text(), expected_config(ICCID, "-1001234567890"))
-        self.assertNotIn("deleteWebhook", (self.fixture / "request").read_text())
+        log = "\n".join(self.curl_log())
+        self.assertNotIn("api.github.com", log)
+        self.assertIn("/download/v9.8.7/djisimbox_linux_arm64.tar.gz", log)
 
-    def test_rerun_preserves_config_without_querying_telegram_or_modem(self):
-        config = "version: 1\nroutes: []\n"
-        secrets = f"bots:\n  default: {TOKEN}\n"
-        (self.config / "config.yaml").write_text(config)
-        (self.config / "secrets.yaml").write_text(secrets)
-        result = self.bash('''
-discover_sims() { exit 90; }
-curl() { exit 91; }
-configure "$FIXTURE/config"
-''')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.config / "config.yaml").read_text(), config)
-        self.assertEqual((self.config / "secrets.yaml").read_text(), secrets)
-
-    def test_partial_configuration_is_preserved(self):
-        (self.config / "config.yaml").write_text("existing configuration")
-        result = self.bash('configure "$FIXTURE/config"\n')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual((self.config / "config.yaml").read_text(), "existing configuration")
-        self.assertFalse((self.config / "secrets.yaml").exists())
-
-    def test_invalid_token_never_reaches_telegram_or_creates_config(self):
-        result = self.configure('\n1\nnot-a-token\n')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Invalid bot token format", result.stderr)
-        self.assertFalse((self.fixture / "request").exists())
-        self.assertFalse((self.config / "config.yaml").exists())
-
-    def test_invalid_setup_input_does_not_leave_configuration_behind(self):
-        for selection, chat in [("3", "123456789"), ("1", "0"), ("1", "@alice"),
-                                ("1", "9223372036854775808"), ("1", "-9223372036854775809")]:
-            with self.subTest(selection=selection, chat=chat):
-                for path in self.config.iterdir():
-                    path.unlink()
-                result = self.configure(f"\n{selection}\n{TOKEN}\n\n{chat}\n")
+    def test_invalid_tag_is_rejected_before_any_download(self):
+        self.package()
+        for tag in ["latest", "v1.2", "v1.2.3/../x", "1.2.3", "v1.2.3 ", "v1.2.3;id"]:
+            with self.subTest(tag=tag):
+                result = self.run_bootstrap(DJISIMBOX_VERSION=tag)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertFalse((self.config / "config.yaml").exists())
-                self.assertFalse((self.config / "secrets.yaml").exists())
+                self.assertIn("Invalid release tag", result.stderr)
+                self.assertFalse((self.fixture / "curl").exists())
+                self.assertFalse((self.fixture / "inner-args").exists())
 
-    def test_chat_id_boundaries_are_validated_without_numeric_rounding(self):
-        for value, expected in [("1", 0), ("-1", 0), ("9223372036854775807", 0),
-                                ("-9223372036854775808", 0), ("0", 1), ("01", 1),
-                                ("9223372036854775808", 1), ("-9223372036854775809", 1)]:
+    def test_checksum_mismatch_or_missing_line_aborts_and_cleans_up(self):
+        for label, sums in [("mismatch", "0" * 64 + "  djisimbox_linux_arm64.tar.gz\n"),
+                            ("missing", "0" * 64 + "  djisimbox_linux_amd64.tar.gz\n"),
+                            ("empty", "")]:
+            with self.subTest(label=label):
+                self.package(sums=sums)
+                result = self.run_bootstrap(DJISIMBOX_VERSION="v1.0.0")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertRegex(result.stderr, "Checksum mismatch|No checksum")
+                self.assertFalse((self.fixture / "inner-args").exists())
+                self.assertEqual(self.leftover_tmp(), [])
+
+    def test_inner_status_is_propagated_and_temp_removed(self):
+        self.package()
+        result = self.run_bootstrap(DJISIMBOX_VERSION="v1.0.0", INNER_STATUS="7")
+        self.assertEqual(result.returncode, 7)
+        self.assertEqual(self.leftover_tmp(), [])
+
+    def test_unknown_architecture_is_rejected(self):
+        result = self.run_bootstrap(FAKE_ARCH="armv7l")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ARM64", result.stderr)
+        self.assertFalse((self.fixture / "curl").exists())
+
+    # ---- language ----
+
+    def language(self, config=None, input=""):
+        path = self.fixture / "config.yaml"
+        if config is not None:
+            path.write_text(config)
+        result = self.bash('choose_language "$FIXTURE/config.yaml"\nprintf "%s" "$lang"\n', input)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result
+
+    def test_language_is_read_from_existing_config(self):
+        self.assertEqual(self.language('version: 1\nlanguage: en\n').stdout, "en")
+        self.assertEqual(self.language('language: "en" # comment\n').stdout, "en")
+        self.assertEqual(self.language('language: zh-CN\n').stdout, "zh-CN")
+        self.assertEqual(self.language('language: fr\n').stdout, "zh-CN")
+
+    def test_language_defaults_to_chinese_when_line_absent_and_never_asks(self):
+        result = self.language('version: 1\n', input="2\n")
+        self.assertEqual(result.stdout, "zh-CN")
+        self.assertNotIn("Language", result.stderr)
+
+    def test_language_is_asked_without_config(self):
+        for answer, expected in [("2\n", "en"), ("1\n", "zh-CN"), ("\n", "zh-CN"), ("", "zh-CN")]:
+            with self.subTest(answer=answer):
+                result = self.language(input=answer)
+                self.assertEqual(result.stdout, expected)
+                self.assertIn("Language / 语言: 1) 中文  2) English [1]:", result.stderr)
+
+    # ---- entry point ----
+
+    # ---- options ----
+
+    def parse(self, *args):
+        quoted = " ".join("'" + a + "'" for a in args)
+        return self.bash(f"""parse_args {quoted}
+printf '%s\\n' "$SETUP_MODE" "$OPT_LANG"; printf '[%s]\\n' "${{SETUP_ARGS[@]}}"
+""")
+
+    def test_parse_accepts_forms_and_keeps_route_order(self):
+        result = self.parse("--language=en", "--route", "all=1,2", "--token-file", "/t", "--route=+86138=-", "--yes")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [
+            "force", "en", "[--language=en]", "[--route]", "[all=1,2]", "[--token-file]", "[/t]",
+            "[--route=+86138=-]", "[--yes]"])
+
+    def test_parse_modes(self):
+        self.assertEqual(self.parse().stdout.splitlines()[0], "auto")
+        self.assertEqual(self.parse("--setup").stdout.splitlines()[0], "force")
+        self.assertEqual(self.parse("--no-setup").stdout.splitlines()[0], "never")
+        self.assertEqual(self.parse("--yes").stdout.splitlines()[0], "force")
+
+    def test_parse_rejects_unknown_conflicts_and_missing_values(self):
+        for args in [("--bogus",), ("--setup", "--no-setup"), ("--no-setup", "--yes"),
+                     ("--route",), ("--language",), ("setup",)]:
+            with self.subTest(args=args):
+                self.assertNotEqual(self.parse(*args).returncode, 0)
+
+    def test_unknown_option_is_rejected_before_any_download(self):
+        marker = self.fixture / "called"
+        fakebin = self.fixture / "bin"
+        fakebin.mkdir()
+        (fakebin / "curl").write_text(f'#!/bin/sh\necho curl >>"{marker}"\n')
+        (fakebin / "curl").chmod(0o755)
+        result = subprocess.run(["bash", str(INSTALLER), "--bogus"], text=True, capture_output=True,
+                                timeout=5, env=dict(os.environ, PATH=f"{fakebin}:{os.environ['PATH']}"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unknown option", result.stderr)
+        self.assertFalse(marker.exists())
+
+    def test_bash_c_with_double_dash_zero_runs_main(self):
+        result = subprocess.run(["bash", "-c", INSTALLER.read_text(), "--", "--setup", "--no-setup"],
+                                text=True, capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--no-setup cannot be combined", result.stderr)
+
+    def test_bootstrap_forwards_options_unchanged(self):
+        self.package()
+        result = self.run_bootstrap("--setup", "--route=all=-", "--token-file", "/a b", DJISIMBOX_VERSION="v1.0.0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.fixture / "inner-args").read_text().splitlines(),
+                         ["--setup", "--route=all=-", "--token-file", "/a b"])
+
+    def setup_step(self, args, config_exists, lang="zh-CN", setup_status=0, asked=0):
+        if config_exists:
+            (self.config / "config.yaml").write_text("language: en\n")
+        (self.fixture / "djisimbox").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$@" >"$FIXTURE/setup-args"\n'
+            f'if [ {setup_status} = 0 ]; then echo x >"$FIXTURE/config/config.yaml"; echo x >"$FIXTURE/config/secrets.yaml"; fi\n'
+            f'exit {setup_status}\n')
+        (self.fixture / "djisimbox").chmod(0o755)
+        quoted = " ".join(f"'{a}'" for a in args)
+        return self.bash(f"""CONF_DIR="$FIXTURE/config" BIN="$FIXTURE/djisimbox" lang={lang} ASKED={asked}
+chown() {{ :; }}
+parse_args {quoted}
+setup_step
+printf 'START=%s\\n' "$START"
+""")
+
+    def setup_args(self):
+        path = self.fixture / "setup-args"
+        return path.read_text().splitlines() if path.exists() else None
+
+    def test_setup_decision_matrix(self):
+        cases = [
+            ([], False, True, "1"), ([], True, False, "1"),
+            (["--setup"], False, True, "1"), (["--setup"], True, True, "1"),
+            (["--yes"], True, True, "1"), (["--route", "all=-"], True, True, "1"),
+            (["--no-setup"], False, False, "0"), (["--no-setup"], True, False, "1"),
+        ]
+        for args, exists, ran, start in cases:
+            with self.subTest(args=args, config=exists):
+                for path in self.fixture.glob("config/*"):
+                    path.unlink()
+                (self.fixture / "setup-args").unlink(missing_ok=True)
+                result = self.setup_step(args, exists)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"START={start}", result.stdout)
+                self.assertEqual(self.setup_args() is not None, ran)
+
+    def test_setup_receives_language_once(self):
+        self.setup_step([], False, lang="en", asked=1)
+        self.assertEqual(self.setup_args(), ["setup", "-language", "en"])
+        (self.config / "config.yaml").unlink()
+        self.setup_step(["--language", "en", "--yes"], False)
+        self.assertEqual(self.setup_args(), ["setup", "--language", "en", "--yes"])
+
+    def test_failed_setup_stops_before_start(self):
+        result = self.setup_step([], False, setup_status=3)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("START=", result.stdout)
+
+    def test_failed_setup_on_existing_config_keeps_it_and_starts(self):
+        result = self.setup_step(["--setup"], True, setup_status=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("START=1", result.stdout)
+        self.assertEqual((self.config / "config.yaml").read_text(), "language: en\n")
+
+    def test_language_option_skips_prompt(self):
+        result = self.bash('parse_args --language en\nchoose_language "$FIXTURE/none.yaml"\nprintf "%s" "$lang"\n', input="1\n")
+        self.assertEqual(result.stdout, "en")
+        self.assertNotIn("Language", result.stderr)
+
+    def test_language_option_is_validated(self):
+        self.assertEqual(self.parse("--language=zh-CN").returncode, 0)
+        for value in ["fr", "EN", ""]:
             with self.subTest(value=value):
-                result = self.bash(f'valid_chat_id {value}\n')
-                self.assertEqual(result.returncode, expected)
+                self.assertNotEqual(self.parse(f"--language={value}").returncode, 0)
+
+    def test_yes_never_prompts_and_existing_config_passes_no_language(self):
+        result = self.bash('parse_args --yes\nchoose_language "$FIXTURE/none.yaml"\nprintf "%s %s" "$lang" "$ASKED"\n', input="2\n")
+        self.assertEqual(result.stdout, "zh-CN 0")
+        self.assertNotIn("Language", result.stderr)
+        self.setup_step(["--setup"], True)
+        self.assertEqual(self.setup_args(), ["setup"])
+
+    def test_cwd_djisimbox_is_never_executed_under_bash_c(self):
+        marker = self.fixture / "executed"
+        fakebin = self.fixture / "bin"
+        fakebin.mkdir()
+        (fakebin / "curl").write_text(f'#!/bin/sh\necho curl >>"{self.fixture}/curl-called"\nexit 22\n')
+        (fakebin / "curl").chmod(0o755)
+        for kind in ("file", "dir"):
+            with self.subTest(kind=kind):
+                work = self.fixture / kind
+                work.mkdir()
+                if kind == "file":
+                    (work / "djisimbox").write_text(f'#!/bin/sh\ntouch "{marker}"\n')
+                    (work / "djisimbox").chmod(0o755)
+                else:
+                    (work / "djisimbox").mkdir()
+                subprocess.run(["bash", "-c", INSTALLER.read_text(), "--"], cwd=work, text=True,
+                               capture_output=True, timeout=10, env=dict(
+                                   os.environ, DJISIMBOX_VERSION="v1.0.0", PATH=f"{fakebin}:{os.environ['PATH']}"))
+                self.assertFalse(marker.exists())
+                if os.geteuid() == 0:
+                    self.assertTrue((self.fixture / "curl-called").exists())
+
+    def test_bash_c_runs_main_but_sourcing_does_not(self):
+        script = INSTALLER.read_text()
+        result = subprocess.run(["bash", "-c", script, "bash", "--help"],
+                                text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("DJISIMBOX_VERSION=vX.Y.Z", result.stdout)
+        result = self.bash('echo sourced-only\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "sourced-only\n")
 
     def test_help_has_no_installation_side_effects(self):
-        result = subprocess.run([str(INSTALLER), "--help"], text=True, capture_output=True, timeout=5)
+        marker = self.fixture / "called"
+        fakebin = self.fixture / "bin"
+        fakebin.mkdir()
+        for name in ["curl", "apt-get", "systemctl", "install", "mktemp", "useradd"]:
+            (fakebin / name).write_text(f'#!/bin/sh\necho {name} >>"{marker}"\n')
+            (fakebin / name).chmod(0o755)
+        result = subprocess.run([str(INSTALLER), "--help"], text=True, capture_output=True, timeout=5,
+                                env=dict(os.environ, PATH=f"{fakebin}:{os.environ['PATH']}"))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("sudo ./install.sh", result.stdout)
+        self.assertIn("sudo bash -c", result.stdout)
+        self.assertIn("raw.githubusercontent.com/samuelncui/djisimbox/main/install.sh", result.stdout)
+        self.assertIn("DJISIMBOX_VERSION=vX.Y.Z", result.stdout)
+        self.assertIn("sudo djisimbox setup", result.stdout)
+        self.assertNotIn("BOT_TOKEN", result.stdout)
+        for option in ["-- --setup", "--no-setup", "--token-file", "--route", "--yes"]:
+            self.assertIn(option, result.stdout)
+        self.assertFalse(marker.exists())
 
 
 if __name__ == "__main__":

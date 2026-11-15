@@ -4,10 +4,13 @@
 
 ## Change recipients or add a SIM
 
-Edit `/etc/djisimbox/config.yaml`. Each SIM has an entry in `routes`; each recipient has an entry in that route's `recipients`. This example sends the first SIM's notifications to two people and the second SIM's to another person. Replace all IDs. Comments start with `#`:
+The easiest way is the guide: run `sudo djisimbox setup`. It lists the connected SIMs and recent chats, lets you choose recipients and the language, and restarts the service. It rewrites `/etc/djisimbox/config.yaml`, so comments you added by hand are not kept.
+
+To edit by hand instead, open `/etc/djisimbox/config.yaml`. Each SIM has an entry in `routes`; each recipient has an entry in that route's `recipients`. This example sends the first SIM's notifications to two people and the second SIM's to another person. Replace all IDs. Comments start with `#`:
 
 ```yaml
 version: 1
+language: en   # notification language: en or zh-CN
 routes:
   - iccid: "89000000000000000001"
     # name: Work SIM
@@ -71,7 +74,7 @@ After successful delivery, `queue.Messages` should return to `0`. Check status a
 - **Modem missing:** Run `sudo mmcli -L`. Check power and the USB data cable on USB1 if the list is empty.
 - **No SMS on the modem:** Use the number from `mmcli -L` in `sudo mmcli -m MODEM_ID` and `sudo mmcli -m MODEM_ID --messaging-list-sms`. Check that the SIM is ready and registered. If a new SMS still does not appear, test the SIM in a phone.
 - **SMS present, but no Telegram notification:** Check status and logs, Wi-Fi access to Telegram, the configured ICCID, token, and chat ID, and the bot's sending permissions. After fixing the issue, check the configuration, restart the service, and send another test SMS.
-- **Cellular interface protection fails:** Confirm systemd-networkd is active and the modem's USB identity is `2c7c:0125`, then rerun `sudo ./install.sh` from the extracted package. Other hardware or network managers need their own interface protection setup.
+- **Cellular interface protection fails:** Confirm systemd-networkd is active and the modem's USB identity is `2c7c:0125`, then run the install command again. Other hardware or network managers need their own interface protection setup.
 - **SMS works, but call alerts do not:** The installer does not configure voice or VoLTE. Call alerts require a real incoming-call test with each SIM, firmware, and carrier combination.
 
 ## Network outages, restarts, and SIM changes
@@ -82,10 +85,10 @@ Before changing a SIM, wait for `queue.Messages` to reach `0`, then use `sudo mm
 
 ## Upgrade or stop
 
-Get the new package using the [download and verification steps](install.md#1-download-and-verify), using a new empty directory on the board. Wait until `queue.Messages` is `0` and there is no call in progress, then run from the new extracted package directory:
+Wait until `queue.Messages` is `0` and there is no call in progress, then run the install command again:
 
 ```sh
-sudo ./install.sh
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbox/main/install.sh)"
 ```
 
 The installer preserves `/etc/djisimbox/config.yaml` and `/etc/djisimbox/secrets.yaml`, updates the program and service files, checks the setup, and restarts the service. Send a test SMS to confirm the upgrade.

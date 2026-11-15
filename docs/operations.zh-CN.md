@@ -4,10 +4,13 @@
 
 ## 修改收件人或增加 SIM
 
-编辑 `/etc/djisimbox/config.yaml`。每张 SIM 在 `routes` 中占一项；每位收件人在该项的 `recipients` 中占一项。下面示例把第一张卡发给两人，第二张卡发给另一人，所有编号都需替换。注释以 `#` 开头：
+最简单的方法是引导：运行 `sudo djisimbox setup`。它会列出已连接的 SIM 和最近的聊天，让你选择收件人和语言，并重启服务。它会重新生成 `/etc/djisimbox/config.yaml`，手写的注释不会保留。
+
+也可以手动编辑 `/etc/djisimbox/config.yaml`。每张 SIM 在 `routes` 中占一项；每位收件人在该项的 `recipients` 中占一项。下面示例把第一张卡发给两人，第二张卡发给另一人，所有编号都需替换。注释以 `#` 开头：
 
 ```yaml
 version: 1
+language: zh-CN   # 通知语言：zh-CN 或 en
 routes:
   - iccid: "89000000000000000001"
     # name: 工作卡
@@ -71,7 +74,7 @@ sudo journalctl --namespace=djisimbox -u djisimbox --no-pager -n 30
 - **找不到模块**：运行 `sudo mmcli -L`。列表为空时，检查供电和 USB1 上的数据线。
 - **模块没有短信**：将 `mmcli -L` 显示的编号填入 `sudo mmcli -m MODEM_ID` 和 `sudo mmcli -m MODEM_ID --messaging-list-sms`，确认 SIM 就绪并已注册网络。新发短信仍未出现时，把 SIM 放进手机测试。
 - **模块有短信，Telegram 没有**：检查状态、日志、Wi-Fi 能否访问 Telegram、配置中的 ICCID、token 和聊天编号，以及 bot 的发送权限。修正后检查配置并重启服务，再发测试短信。
-- **蜂窝网口保护失败**：确认 systemd-networkd 正在运行、模块 USB 身份为 `2c7c:0125`，再从解包目录运行 `sudo ./install.sh`。其他硬件或网络管理器需另行配置网口保护。
+- **蜂窝网口保护失败**：确认 systemd-networkd 正在运行、模块 USB 身份为 `2c7c:0125`，再运行一次安装命令。其他硬件或网络管理器需另行配置网口保护。
 - **短信正常，来电没有通知**：安装器不会配置语音或 VoLTE。每种 SIM、固件和运营商组合都需实际拨入测试。
 
 ## 断网、重启与换卡
@@ -82,10 +85,10 @@ sudo journalctl --namespace=djisimbox -u djisimbox --no-pager -n 30
 
 ## 升级或停用
 
-按[下载和校验步骤](install.zh-CN.md#1-下载并校验)取得新包，在板子上使用新的空目录。等 `queue.Messages` 为 `0` 且没有来电后，从新包的解包目录执行：
+等 `queue.Messages` 为 `0` 且没有来电后，再运行一次安装命令：
 
 ```sh
-sudo ./install.sh
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbox/main/install.sh)"
 ```
 
 安装器会保留 `/etc/djisimbox/config.yaml` 和 `/etc/djisimbox/secrets.yaml`，更新程序和服务文件，检查后重启服务。最后发送测试短信确认升级成功。

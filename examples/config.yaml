@@ -1,6 +1,10 @@
 # DJI SIM Box configuration (/etc/djisimbox/config.yaml).
-# After editing, restart the service: sudo systemctl restart djisimbox
+# The easiest way to change it is the guide: sudo djisimbox setup
+# After editing by hand, restart the service: sudo systemctl restart djisimbox
 version: 1
+
+# Notification language: en or zh-CN (default zh-CN).
+language: en
 
 # One entry per SIM, matched by ICCID: the SIM card number, not the phone number.
 # Messages from a SIM without an entry are held and forwarded to nobody.
