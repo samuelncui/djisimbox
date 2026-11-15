@@ -18,7 +18,7 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbo
 - DJI 第一代蜂窝模块和已激活、关闭 PIN 锁的 SIM；多张卡同时在线需要多个模块。
 - 能访问 Telegram 的 Wi-Fi、板子的 SSH 登录方式，以及一个 Telegram bot。
 
-当前为早期版本，以上组合已验证短信和来电通知。其他模块、固件或运营商组合需自行测试；多模块同时运行尚未完成实机验证。
+当前为早期版本，以上组合已验证短信、彩信通知和来电提醒，包括两个模块（各插一张卡）同时运行。其他模块、固件或运营商组合需自行测试。
 
 ## 使用前了解
 

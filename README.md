@@ -18,7 +18,7 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/samuelncui/djisimbo
 - A first-generation DJI cellular modem and an activated SIM with its PIN lock disabled. Using several SIMs at once requires several modems.
 - Wi-Fi with access to Telegram, SSH access to the board, and a Telegram bot.
 
-This is an early version. SMS and call alerts have been verified with the setup above. Other modems, firmware, and carriers need testing; running multiple modems together has not been tested on hardware.
+This is an early version. SMS, MMS notifications and call alerts have been verified with the setup above, including two modems with different SIMs running at the same time. Other modems, firmware, and carriers need testing.
 
 ## Before you use it
 

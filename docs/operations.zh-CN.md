@@ -26,7 +26,7 @@ routes:
         chat_id: "345678901"
 ```
 
-使用 SIM 的完整 ICCID，不要填电话号码或 IMSI；路由只按 ICCID 匹配。`name` 可省略：省略时通知显示 SIM 内存储的本机号码；SIM 未存号码时显示 `ICCID 尾号 1234`（ICCID 末四位）。填写 `name` 时须为单行 1–80 个字符。增加 SIM 时，用 `sudo mmcli -L` 找到模块，再用 `sudo mmcli -m MODEM_ID` 找到 SIM 路径，最后用 `sudo mmcli -i SIM_ID` 读取 ICCID；模块和 SIM 的编号可能不同。多张卡同时在线需要多个模块，目前尚未完成实机验证。新增收件人前，先[取得聊天编号](#取得-telegram-聊天编号)。
+使用 SIM 的完整 ICCID，不要填电话号码或 IMSI；路由只按 ICCID 匹配。`name` 可省略：省略时通知显示 SIM 内存储的本机号码；SIM 未存号码时显示 `ICCID 尾号 1234`（ICCID 末四位）。填写 `name` 时须为单行 1–80 个字符。增加 SIM 时，用 `sudo mmcli -L` 找到模块，再用 `sudo mmcli -m MODEM_ID` 找到 SIM 路径，最后用 `sudo mmcli -i SIM_ID` 读取 ICCID；模块和 SIM 的编号可能不同。多张卡同时在线需要多个模块（每个模块一张卡），两个模块同时运行已实机验证。新增收件人前，先[取得聊天编号](#取得-telegram-聊天编号)。
 
 需要不同 bot 时，在 `/etc/djisimbox/secrets.yaml` 的 `bots` 中增加一项，例如 `family: "另一个 bot 的完整 token"`，并把相应收件人的 `bot` 改为 `family`。
 

@@ -282,6 +282,8 @@ main() {
     systemctl stop djisimbox
   fi
   install -m 0755 "$binary" /usr/local/bin/djisimbox
+  # Apply the log namespace settings while djisimbox is stopped; restarting it later would restart the service too.
+  systemctl restart systemd-journald@djisimbox
 
   setup_step
   if (( ! START )); then
@@ -292,9 +294,9 @@ main() {
 
   runuser -u djisimbox -- /usr/local/bin/djisimbox check >/dev/null
   say '配置和调制解调器检查通过。' 'Configuration and modem check passed.'
-  systemctl restart systemd-journald@djisimbox
   systemctl enable djisimbox
-  systemctl restart djisimbox
+  # The setup guide may already have started the service with the new settings.
+  if ! systemctl is-active --quiet djisimbox; then systemctl start djisimbox; fi
   systemctl is-active --quiet djisimbox ||
     fail 'djisimbox 服务未能启动，请查看：journalctl -u djisimbox' 'djisimbox failed to start. See: journalctl -u djisimbox'
   say '安装完成。给 SIM 发一条测试短信，确认 Telegram 收到。' \

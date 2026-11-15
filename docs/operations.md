@@ -26,7 +26,7 @@ routes:
         chat_id: "345678901"
 ```
 
-Use each SIM's full ICCID, rather than its phone number or IMSI; routing matches only the ICCID. `name` is optional: without it, notifications show the phone number stored on the SIM, or `ICCID 尾号 1234` (the last four ICCID digits) if the SIM does not store it. A `name` must be 1-80 characters on one line. Find additional SIMs with `sudo mmcli -L`, use `sudo mmcli -m MODEM_ID` to find the SIM path, then read the ICCID with `sudo mmcli -i SIM_ID`; the modem and SIM IDs may differ. Several SIMs online at once require several modems; this has not yet been tested on hardware. For a new recipient, [find their chat ID](#find-a-telegram-chat-id) first.
+Use each SIM's full ICCID, rather than its phone number or IMSI; routing matches only the ICCID. `name` is optional: without it, notifications show the phone number stored on the SIM, or `ICCID 尾号 1234` (the last four ICCID digits) if the SIM does not store it. A `name` must be 1-80 characters on one line. Find additional SIMs with `sudo mmcli -L`, use `sudo mmcli -m MODEM_ID` to find the SIM path, then read the ICCID with `sudo mmcli -i SIM_ID`; the modem and SIM IDs may differ. Several SIMs online at once require several modems, one SIM each; two modems together have been tested on hardware. For a new recipient, [find their chat ID](#find-a-telegram-chat-id) first.
 
 To use another bot, add an entry to `bots` in `/etc/djisimbox/secrets.yaml`, such as `family: "full token for another bot"`, and change the relevant recipient's `bot` to `family`.
 
