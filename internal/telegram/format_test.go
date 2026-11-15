@@ -54,6 +54,44 @@ func TestFormatCallMetadata(t *testing.T) {
 	}
 }
 
+func TestFormatMMS(t *testing.T) {
+	// Show what the notification reports about the stored content, and that it was not downloaded.
+	for _, test := range []struct {
+		name string
+		mms  MMS
+		want string
+	}{
+		{
+			name: "full metadata",
+			mms: MMS{Label: "+8613261231131", Sender: "10690000000", Timestamp: "2026-11-07T16:44:58+08",
+				Subject: "账单", Size: 676038, Expiry: "2026-11-10T16:44:58+08:00"},
+			want: "彩信通知\nSIM: +8613261231131\n号码: 10690000000\n时间: 2026-11-07T16:44:58+08\n\n" +
+				"主题: 账单\n大小: 660 KB\n有效期至: 2026-11-10T16:44:58+08:00\n内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。",
+		},
+		{
+			name: "unknown optional metadata",
+			mms:  MMS{Sender: "10690000000", Subject: " \n"},
+			want: "彩信通知\n号码: 10690000000\n\n内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。",
+		},
+		{
+			name: "small and large sizes",
+			mms:  MMS{Size: 900, Subject: "a\nb"},
+			want: "彩信通知\n\n主题: a b\n大小: 900 B\n内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。",
+		},
+		{
+			name: "megabytes",
+			mms:  MMS{Size: 3 * 1024 * 1024 / 2},
+			want: "彩信通知\n\n大小: 1.5 MB\n内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := FormatMMS(test.mms); got != test.want {
+				t.Fatalf("FormatMMS() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestFormatCallBoundsUnicodeFields(t *testing.T) {
 	// Oversized Unicode fields must remain one notification with three metadata lines.
 	text := FormatCall(Call{

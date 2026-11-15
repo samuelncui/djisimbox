@@ -23,7 +23,7 @@ func TestIncomingRequiresCompleteReceivedText(t *testing.T) {
 		{"received", smsReceived, pduDeliver, nil, true},
 		{"outgoing", smsReceived, 2, nil, false},
 		{"report", smsReceived, 3, nil, false},
-		{"binary", smsReceived, pduDeliver, []byte{1}, false},
+		{"binary non-MMS", smsReceived, pduDeliver, []byte{1}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Supply the same synthetic Unicode content across the distinct message states.

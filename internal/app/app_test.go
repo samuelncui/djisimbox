@@ -153,6 +153,33 @@ func TestUnnamedRouteLabelsWithOwnNumberOrICCIDSuffix(t *testing.T) {
 	}
 }
 
+func TestMMSNotificationUsesSMSLifecycle(t *testing.T) {
+	// An MMS notice is formatted from its metadata and released from the modem only after delivery.
+	w, inbox := fixture(t, 10)
+	message := modem.Message{Kind: modem.MMS, SourceKey: "mms-1", SIMID: testSIM, Sender: "10690000000",
+		Timestamp: "2026-11-07T16:44:58+08", MMS: modem.MMSNotice{Size: 676038, Expiry: "2026-11-10T16:44:58+08:00"}}
+	if err := w.accept(context.Background(), message); err != nil {
+		t.Fatal(err)
+	}
+	ready := w.queue.Due(time.Now(), 1, nil)
+	want := "彩信通知\nSIM: 测试 SIM\n号码: 10690000000\n时间: 2026-11-07T16:44:58+08\n\n" +
+		"大小: 660 KB\n有效期至: 2026-11-10T16:44:58+08:00\n内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。"
+	if len(ready) != 1 || ready[0].Text != want || inbox.deletes != 0 {
+		t.Fatalf("unexpected MMS notification: %+v deletes=%d", ready, inbox.deletes)
+	}
+
+	// Delivery acknowledgment lets the next intake release the modem copy.
+	if err := w.queue.Delivered(ready[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.accept(context.Background(), message); err != nil {
+		t.Fatal(err)
+	}
+	if inbox.deletes != 1 || w.queue.Stats().Messages != 0 {
+		t.Fatalf("MMS source not released: deletes=%d stats=%+v", inbox.deletes, w.queue.Stats())
+	}
+}
+
 func TestUnknownSIMAndCapacityPreserveModemCopies(t *testing.T) {
 	// Unknown identities have no fallback recipient and retain the original on the modem.
 	w, inbox := fixture(t, 1)

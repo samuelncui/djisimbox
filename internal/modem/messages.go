@@ -27,7 +27,7 @@ func (c *Client) reconcileMessages(ctx context.Context, device Device,
 	}
 	c.retryDeletions(ctx, device, paths, handle)
 
-	// Incomplete multipart SMS remain on the modem; only complete incoming text enters the queue.
+	// Incomplete multipart SMS remain on the modem; only complete incoming text or MMS notifications enter the queue.
 	for _, path := range paths {
 		callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		values, err := c.properties(callCtx, device.owner, path, smsIF)

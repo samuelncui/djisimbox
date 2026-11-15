@@ -2,7 +2,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-Forward SMS messages and incoming call text alerts from a USB cellular modem to Telegram. Each SIM can have its own recipients, including multiple people. The program runs on a standalone Orange Pi Zero 2W connected over Wi-Fi.
+Forward SMS messages, MMS notifications and incoming call text alerts from a USB cellular modem to Telegram. Each SIM can have its own recipients, including multiple people. The program runs on a standalone Orange Pi Zero 2W connected over Wi-Fi.
 
 **[Install](docs/install.md) · [Use and troubleshoot](docs/operations.md)**
 
@@ -20,6 +20,7 @@ This is an early version. SMS and call alerts have been verified with the setup 
 
 - The installer keeps the supported modem's cellular network interfaces down so Telegram uses Wi-Fi. SIM plans and roaming may still incur charges; check with your carrier.
 - Call support sends text alerts only. It does not answer calls or carry call audio; make a test call to confirm alerts work.
+- MMS support forwards the notification only: sender, size and expiry. Downloading MMS content needs the SIM's cellular data, which stays off.
 - Read the [delivery and restart behavior](docs/operations.md#network-outages-restarts-and-sim-changes) before relying on notifications.
 
 [Development](https://github.com/samuelncui/djisimbox/blob/main/.agents/README.md) · [MIT License](LICENSE)

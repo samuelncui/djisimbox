@@ -103,6 +103,10 @@ func (w *worker) accept(ctx context.Context, message modem.Message) error {
 		case modem.IncomingCall:
 			parts = []string{telegram.FormatCall(telegram.Call{Label: label, Number: message.Sender,
 				ObservedAt: message.Timestamp})}
+		case modem.MMS:
+			parts = []string{telegram.FormatMMS(telegram.MMS{Label: label, Sender: message.Sender,
+				Timestamp: message.Timestamp, Subject: message.MMS.Subject, Size: message.MMS.Size,
+				Expiry: message.MMS.Expiry})}
 		default:
 			return errors.New("unsupported notification kind")
 		}

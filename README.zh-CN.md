@@ -2,7 +2,7 @@
 
 [English](README.md) · **简体中文**
 
-把 USB 蜂窝模块收到的短信和来电文字通知转发到 Telegram。每张 SIM 可指定不同收件人，也可同时发给多人。程序在 Orange Pi Zero 2W 上独立运行，通过 Wi-Fi 联网。
+把 USB 蜂窝模块收到的短信、彩信通知和来电文字提醒转发到 Telegram。每张 SIM 可指定不同收件人，也可同时发给多人。程序在 Orange Pi Zero 2W 上独立运行，通过 Wi-Fi 联网。
 
 **[开始安装](docs/install.zh-CN.md) · [日常使用与排错](docs/operations.zh-CN.md)**
 
@@ -20,6 +20,7 @@
 
 - 安装器会关闭受支持模块的蜂窝网口，让 Telegram 走 Wi-Fi。SIM 套餐和漫游仍可能产生费用，请向运营商确认。
 - 来电功能只发文字提醒，不接听或传输通话音频；能否收到提醒需要实际拨入测试。
+- 彩信只转发通知：发件人、大小和有效期。下载彩信内容需要这张卡的蜂窝数据，而蜂窝数据保持关闭。
 - 正式使用前，了解[断网、重启与换卡时的投递行为](docs/operations.zh-CN.md#断网重启与换卡)。
 
 [开发资料](https://github.com/samuelncui/djisimbox/blob/main/.agents/README.md) · [MIT License](LICENSE)

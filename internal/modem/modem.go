@@ -35,12 +35,13 @@ const (
 // ErrSourcesChanged asks the supervisor to rebuild RAM state from retained modem originals.
 var ErrSourcesChanged = errors.New("modem source identity changed; restart to rebuild the memory queue")
 
-// Kind distinguishes retained SMS originals from passive incoming-call notices.
+// Kind distinguishes retained SMS originals and MMS notifications from passive incoming-call notices.
 type Kind uint8
 
 const (
 	SMS Kind = iota
 	IncomingCall
+	MMS
 )
 
 // Message belongs to one SIM and one ModemManager object lifetime.
@@ -52,10 +53,12 @@ type Message struct {
 	Sender    string
 	Text      string
 	Timestamp string
-	Path      dbus.ObjectPath
-	Modem     dbus.ObjectPath
-	owner     string
-	removed   bool
+	// MMS holds an MMS notification's metadata when Kind is MMS.
+	MMS     MMSNotice
+	Path    dbus.ObjectPath
+	Modem   dbus.ObjectPath
+	owner   string
+	removed bool
 }
 
 func (m Message) belongsTo(device Device) bool {
@@ -363,7 +366,7 @@ func (c *Client) Delete(ctx context.Context, message Message) error {
 		c.calls[message.SourceKey] = notice
 		return nil
 	}
-	if message.Kind != SMS {
+	if message.Kind != SMS && message.Kind != MMS {
 		return errors.New("unsupported notification kind")
 	}
 
@@ -403,7 +406,7 @@ func (c *Client) properties(ctx context.Context, owner string, path dbus.ObjectP
 }
 
 func incoming(boot string, device Device, path dbus.ObjectPath, values map[string]dbus.Variant) (Message, bool) {
-	// Received state, incoming PDU type, and text representation must all be explicit.
+	// Received state and incoming PDU type must be explicit.
 	state, ok := values["State"].Value().(uint32)
 	if !ok || state != smsReceived {
 		return Message{}, false
@@ -412,24 +415,36 @@ func incoming(boot string, device Device, path dbus.ObjectPath, values map[strin
 	if !ok || kind != pduDeliver {
 		return Message{}, false
 	}
-	text, ok := values["Text"].Value().(string)
-	if !ok || !utf8.ValidString(text) || len(text) > maxTextBytes {
-		return Message{}, false
-	}
-	if data, ok := values["Data"].Value().([]byte); ok && len(data) > 0 {
-		return Message{}, false
-	}
 
 	// Object identity deduplicates only within the owner lifetime, never by SMS text or time.
-	message := Message{SIMID: device.SIMID, OwnNumber: device.OwnNumber, Text: text, Path: path, Modem: device.Path,
-		owner: device.owner}
+	message := Message{SIMID: device.SIMID, OwnNumber: device.OwnNumber, Path: path, Modem: device.Path,
+		owner: device.owner, SourceKey: sourceKey(boot, device, path)}
 	if value, ok := values["Number"]; ok {
 		_ = value.Store(&message.Sender)
 	}
 	if value, ok := values["Timestamp"]; ok {
 		_ = value.Store(&message.Timestamp)
 	}
-	message.SourceKey = sourceKey(boot, device, path)
+
+	// Binary SMS qualify only as MMS notifications, whose MMS sender replaces the push gateway number.
+	if data, ok := values["Data"].Value().([]byte); ok && len(data) > 0 {
+		sender, notice, ok := parseMMSNotification(data, message.Timestamp)
+		if !ok {
+			return Message{}, false
+		}
+		message.Kind, message.MMS = MMS, notice
+		if sender != "" {
+			message.Sender = sender
+		}
+		return message, true
+	}
+
+	// Text SMS must carry a bounded, valid UTF-8 body.
+	text, ok := values["Text"].Value().(string)
+	if !ok || !utf8.ValidString(text) || len(text) > maxTextBytes {
+		return Message{}, false
+	}
+	message.Text = text
 	return message, true
 }
 

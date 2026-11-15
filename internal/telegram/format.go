@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -24,6 +25,50 @@ type Call struct {
 	Label      string
 	Number     string
 	ObservedAt string
+}
+
+// MMS contains an MMS notification's metadata; the carrier keeps the content.
+type MMS struct {
+	Label     string
+	Sender    string
+	Timestamp string
+	Subject   string
+	Size      int64
+	Expiry    string
+}
+
+// FormatMMS renders one bounded notification, preserving unknown optional metadata as absent.
+func FormatMMS(mms MMS) string {
+	// Share the SMS metadata layout, then list what the notification says about the stored content.
+	var text strings.Builder
+	text.WriteString(formatHeader("彩信通知", mms.Label, mms.Sender, mms.Timestamp))
+	text.WriteByte('\n')
+	for _, field := range []struct{ name, value string }{
+		{"主题: ", headerValue(mms.Subject)},
+		{"大小: ", formatSize(mms.Size)},
+		{"有效期至: ", headerValue(mms.Expiry)},
+	} {
+		if field.value != "" {
+			text.WriteString("\n" + field.name + field.value)
+		}
+	}
+
+	// The content needs the SIM's cellular data, which the service never uses.
+	text.WriteString("\n内容未下载：彩信内容需要通过这张卡的蜂窝数据获取。")
+	return text.String()
+}
+
+func formatSize(size int64) string {
+	switch {
+	case size <= 0:
+		return ""
+	case size < 1024:
+		return fmt.Sprintf("%d B", size)
+	case size < 1024*1024:
+		return fmt.Sprintf("%d KB", (size+512)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
+	}
 }
 
 // FormatCall renders one bounded notification, preserving unknown optional metadata as absent.
